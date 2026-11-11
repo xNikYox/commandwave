@@ -62,3 +62,15 @@ test("Wortschatz für die Erkennung: jedes Wort einmal, viel kleiner als alle S�
   const all = P.grammar(cmds, slots).reduce((n, x) => n + x.split(" ").length, 0);
   assert.ok(v.length * 4 < all, `${v.length} Wörter statt ${all} Einträgen`);
 });
+
+test("kompakte Grammatik: Muster mit Beispielwerten, große Wertelisten nur einmal", () => {
+  const many = { app: Object.fromEntries(Array.from({ length: 120 }, (_, i) => ["app" + i, i])) };
+  const g = P.compactGrammar(cmds, many);
+  const full = P.grammar(cmds, many);
+  assert.ok(g.includes("öffne die app app0") && g.includes("app119"));
+  assert.ok(!g.includes("öffne die app app119"));
+  assert.ok(g.length * 3 < full.length, `${g.length} statt ${full.length}`);
+  // kleine Listen (z. B. Zahlen) vollständig in jedem Muster
+  const small = P.compactGrammar(P.compile([{ phrases: ["timer {zahl} minuten"] }]), { zahl: { eins: 1, fünf: 5, zehn: 10 } });
+  assert.ok(small.includes("timer fünf minuten"));
+});

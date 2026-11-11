@@ -55,8 +55,13 @@ test("gefundene Apps: „Öffne Visual Studio Code“ startet über den Explorer
   assert.equal(calls.at(-1).line, "notepad.exe");
   // Programme werden NICHT mit verstecktem Fenster gestartet
   assert.ok(calls.every((c) => !c.opts?.windowsHide), "windowsHide darf nicht gesetzt sein");
-  for (const w of ["öffne", "visual", "studio", "code", "gimp", "[unk]"]) assert.ok(a.grammar.includes(w), w);
-  assert.equal(new Set(a.grammar).size, a.grammar.length, "jedes Wort nur einmal");
+  // realistisch viele Apps (Testrechner: 109): jede App einmal, nicht in jedem Muster wiederholt
+  const many = [...START_APPS, ...Array.from({ length: 60 }, (_, i) => ({ Name: "Programm " + i, AppID: "p" + i }))];
+  a.setExtraSlots({ app: toSlots(many) });
+  assert.ok(a.grammar.includes("visual studio code"), "jede App einmal in der Grammatik");
+  assert.ok(!a.grammar.includes("starte die app programm 59"), "Apps nicht in jedem Muster wiederholt");
+  assert.ok(a.grammar.length < 3000, String(a.grammar.length));
+  assert.equal(a.grammar.at(-1), "[unk]");
 });
 
 test("nichts gehört → eigene Antwort statt „Befehl unbekannt“", async () => {

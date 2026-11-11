@@ -32,7 +32,9 @@ class Assistant {
     this.slots = { ...r.slots };
     for (const [name, values] of Object.entries(this.extraSlots)) if (this.slots[name]) this.slots[name] = { ...values, ...this.slots[name] };
     this.compiled = P.compile(r.commands);
-    this.grammar = P.vocabulary(this.compiled, this.slots); // Wortschatz für die Erkennung (jedes Wort einmal)
+    // Grammatik für die Erkennung: jedes Muster mit wenigen Beispielwerten, jeder Wert einmal (Hörtest: gleich gut wie
+    // alle Sätze, aber ein Bruchteil der Größe – und sie wächst nicht mit jeder installierten App mal jedem Befehl)
+    this.grammar = P.compactGrammar(this.compiled, this.slots);
     return this.summary();
   }
 
