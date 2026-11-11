@@ -37,7 +37,8 @@ function createActions(env = {}) {
   });
   /** Programm losgelöst starten → Promise (Fehler z. B. ENOENT) */
   const launch = (file, list) => new Promise((resolve, reject) => {
-    const child = sp(file, list, { windowsHide: true, detached: true, stdio: "ignore" });
+    // windowsHide NICHT setzen: sonst startet Windows Programme mit verstecktem Fenster
+    const child = sp(file, list, { detached: true, stdio: "ignore" });
     let done = false;
     child.on?.("error", (e) => !done && ((done = true), reject(e)));
     child.on?.("spawn", () => !done && ((done = true), resolve()));
@@ -67,6 +68,8 @@ function createActions(env = {}) {
   const actions = {
     async run({ target, args = [] }) {
       if (!target) throw new Error("run: target fehlt");
+      // Startmenü-/Store-Apps (shell:AppsFolder\…) öffnet der Explorer wie ein Klick im Startmenü
+      if (/^shell:/i.test(target)) return launch("explorer.exe", [target]);
       if (isUri(target)) return actions.open({ target });
       const list = args.map(String);
       // erst direkt starten (kein Konsolenfenster); findet Windows das Programm so nicht (z. B. „winword“),
@@ -82,6 +85,7 @@ function createActions(env = {}) {
     },
     async open({ target }) {
       if (!target) throw new Error("open: target fehlt");
+      if (/^shell:/i.test(target)) return launch("explorer.exe", [target]);
       if (isUri(target)) return env.openExternal ? env.openExternal(target) : actions.run({ target: "explorer.exe", args: [target] });
       const p = target.replace(/%([^%]+)%/g, (m, v) => process.env[v] ?? m); // %USERPROFILE%\Downloads
       const err = env.openPath ? await env.openPath(path.normalize(p)) : "";

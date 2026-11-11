@@ -185,9 +185,14 @@ $("#reload").onclick = async () => apply(await cw.reloadMods());
 $("#folder").onclick = () => cw.openModsFolder();
 $("#check").onclick = async () => apply(await cw.checkUpdates());
 
-/** Neuer Stand der Mods (nach Laden, Update, Umschalten) */
+function showHint() {
+  $("#hint").textContent = `${state.commands.length} Befehle aus ${state.mods.filter((m) => m.enabled).length} Mods${state.foundApps ? ` · ${state.foundApps} Apps gefunden` : ""} · offline`;
+}
+
+/** Neuer Stand der Mods (nach Laden, Update, Umschalten, gefundenen Apps) */
 function apply(mods) {
   Object.assign(state, mods);
+  if (ready) showHint();
   if (ready) speech.setGrammar(state.grammar);
   renderCommands();
   renderMods();
@@ -314,7 +319,7 @@ cw.onAppUpdate(renderAppUpdate);
     speech.setGrammar(state.grammar);
     ready = true;
     idle();
-    $("#hint").textContent = `${state.commands.length} Befehle aus ${state.mods.filter((m) => m.enabled).length} Mods · offline`;
+    showHint();
   } catch (e) {
     setStatus("Spracherkennung konnte nicht geladen werden: " + e.message, "error");
   }

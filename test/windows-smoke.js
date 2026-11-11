@@ -5,8 +5,13 @@ const path = require("node:path");
 const os = require("node:os");
 const { createActions } = require("../src/core/actions");
 const { Assistant } = require("../src/core/assistant");
+const { START_APPS_CMD, toSlots } = require("../src/core/apps");
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Hat der Prozess ein sichtbares Fenster? (früher startete CommandWave Programme versteckt) */
+const visibleWindow = (name) => execFileSync("powershell.exe", ["-NoProfile", "-Command",
+  "Add-Type -Namespace W -Name U -MemberDefinition '[DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h);'; " +
+  `$p = Get-Process -Name ${name} -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }; if ($p -and [W.U]::IsWindowVisible($p[0].MainWindowHandle)) { 'ja' } else { 'nein' }`]).toString().trim();
 const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`, "/NH"]).toString().toLowerCase().includes(exe.toLowerCase());
 
 (async () => {
@@ -20,13 +25,29 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   assert.equal(r.say, "Editor wird gestartet");
   await wait(2500);
   assert.ok(running("notepad.exe"), "Editor läuft nicht");
-  console.log("„Öffne die App Editor“ → Editor läuft: ok");
+  assert.equal(visibleWindow("notepad"), "ja", "Editor läuft, aber ohne sichtbares Fenster");
+  console.log("„Öffne die App Editor“ → Editor läuft mit sichtbarem Fenster: ok");
 
   r = await a.handle("schließe den editor");
   assert.equal(r.say, "Editor wird geschlossen");
   await wait(2500);
   assert.ok(!running("notepad.exe"), "Editor läuft noch");
   console.log("„Schließe den Editor“ → beendet: ok");
+
+  // Installierte Apps aus dem Startmenü (Get-StartApps) und Start über shell:AppsFolder
+  const list = JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-Command", START_APPS_CMD]).toString() || "[]");
+  const slots = toSlots(list);
+  console.log(`Get-StartApps: ${[].concat(list).length} Einträge → ${Object.keys(slots).length} sprechbare Apps, z. B. ${Object.keys(slots).slice(0, 12).join(", ")}`);
+  assert.ok(Object.keys(slots).length >= 5, "zu wenige Apps gefunden");
+  a.setExtraSlots({ app: slots });
+  const np = Object.entries(slots).find(([, v]) => /notepad/i.test(v.target));
+  if (np) {
+    await actions.run({ target: np[1].target });
+    await wait(3000);
+    assert.ok(running("notepad.exe"), "Start über shell:AppsFolder hat nicht geklappt: " + np[1].target);
+    console.log(`Start über das Startmenü (${np[1].target}): ok`);
+    execFileSync("taskkill", ["/IM", "notepad.exe", "/F"]);
+  } else console.log("Editor nicht im Startmenü gefunden – Start über shell:AppsFolder nicht geprüft");
 
   // Programm, das Windows nur über „start“ findet (App-Pfade), und eines mit Pfad + Argumenten
   await actions.run({ target: "cmd.exe", args: ["/c", "exit", "0"] });

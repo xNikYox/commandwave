@@ -108,7 +108,7 @@ const WORD_MIN = 0.72; // ab hier zählt ein Wort als „gemeint“
 const FILLER = new Set(["bitte", "mal", "doch", "jetzt", "einmal", "kurz", "hey", "hallo", "ok", "okay", "äh", "ähm", "also",
   "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "mir", "mich", "uns", "für"]);
 
-/** Bester Platzhalter-Wert für 1–3 Wörter: { key, value, sim } */
+/** Bester Platzhalter-Wert für 1–4 Wörter: { key, value, sim } */
 function bestSlot(words, values) {
   const span = words.join(" ");
   let best = null;
@@ -144,7 +144,7 @@ function matchSeq(seq, words, slotValues) {
           const sim = similarity(p.v, words[j]);
           if (sim >= WORD_MIN) take(go(i + 1, j + 1), sim);
         } else if (p.t === "slot") {
-          for (let len = 1; len <= 3 && j + len <= words.length; len++) {
+          for (let len = 1; len <= 4 && j + len <= words.length; len++) {
             const s = bestSlot(words.slice(j, j + len), slotValues[p.v]);
             if (s) take(go(i + 1, j + len), s.sim * 1.5, { [p.v]: { key: s.key, value: s.value, heard: words.slice(j, j + len).join(" ") } });
           }
@@ -189,7 +189,7 @@ function match(text, compiled, slotValues = {}, threshold = 0.66) {
 }
 
 /** Grammatik für die Spracherkennung: alle Sätze mit eingesetzten Werten (+ „[unk]“ für Unbekanntes) */
-function grammar(compiled, slotValues = {}, limit = 3000) {
+function grammar(compiled, slotValues = {}, limit = 6000) {
   const out = new Set();
   for (const c of compiled) {
     for (const v of c.variants) {
@@ -197,7 +197,7 @@ function grammar(compiled, slotValues = {}, limit = 3000) {
       for (const p of v) {
         if (p.t === "w") texts = texts.map((t) => t + " " + p.v);
         else texts = texts.flatMap((t) => Object.keys(slotValues[p.v] || {}).map((k) => t + " " + normalize(k)));
-        if (texts.length > 200) texts = texts.slice(0, 200);
+        if (texts.length > 400) texts = texts.slice(0, 400);
       }
       for (const t of texts) {
         out.add(t.trim());

@@ -8,6 +8,8 @@ const { Assistant } = require("./core/assistant");
 const { createActions } = require("./core/actions");
 const { seedDefaults } = require("./core/mods");
 const updater = require("./core/updater");
+const { START_APPS_CMD, toSlots } = require("./core/apps");
+const { execFile } = require("node:child_process");
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -101,6 +103,7 @@ function modsState() {
     commands: assistant.compiled.map((c) => ({ id: c.id, mod: c.mod, phrases: c.phrases })),
     slots: Object.fromEntries(Object.entries(assistant.slots).map(([k, v]) => [k, Object.entries(v).map(([key, val]) => (val && typeof val === "object" && val.label) || key)])),
     updates: { ...updates, list: updates.list.map(({ entry, source, ...u }) => u) },
+    foundApps,
   };
 }
 
@@ -245,6 +248,42 @@ function buildTray() {
 
 const prettyKey = (k) => String(k || "").replace("Control", "Strg").replace("Space", "Leertaste").replace(/\+/g, " + ");
 
+/**
+ * Gedrückt gehaltene Tasten wiederholt Windows ständig – das würde das Zuhören sofort wieder beenden.
+ * Nur ein neuer Druck (Pause > 400 ms seit dem letzten Signal) zählt.
+ */
+let lastHotkey = 0;
+function hotkeyPressed() {
+  const now = Date.now();
+  const fresh = now - lastHotkey > 400;
+  lastHotkey = now;
+  if (fresh) listen();
+}
+
+/** Installierte Apps aus dem Startmenü (auch Store-Apps) für „Öffne …“ */
+function discoverApps() {
+  if (process.platform !== "win32") return Promise.resolve(0);
+  return new Promise((resolve) => {
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", START_APPS_CMD], { windowsHide: true, maxBuffer: 20 * 1024 * 1024, timeout: 30000 }, (err, stdout) => {
+      if (err) {
+        log("Apps aus dem Startmenü nicht lesbar:", err.message);
+        return resolve(0);
+      }
+      try {
+        const slots = toSlots(JSON.parse(stdout || "[]"));
+        foundApps = Object.keys(slots).length;
+        assistant.setExtraSlots({ app: slots });
+        send("mods", modsState());
+        resolve(foundApps);
+      } catch (e) {
+        log("Apps-Liste kaputt:", e.message);
+        resolve(0);
+      }
+    });
+  });
+}
+let foundApps = 0;
+
 /** Zuhören starten (Tastenkombination, Tray oder Knopf) */
 function listen() {
   if (!win) createWindow(false);
@@ -256,7 +295,7 @@ function registerHotkey() {
   globalShortcut.unregisterAll();
   if (!settings.hotkey) return null;
   try {
-    return globalShortcut.register(settings.hotkey, listen) ? null : `Die Tastenkombination ${prettyKey(settings.hotkey)} ist schon von einem anderen Programm belegt.`;
+    return globalShortcut.register(settings.hotkey, hotkeyPressed) ? null : `Die Tastenkombination ${prettyKey(settings.hotkey)} ist schon von einem anderen Programm belegt.`;
   } catch {
     return `Ungültige Tastenkombination: ${settings.hotkey}`;
   }
@@ -280,7 +319,7 @@ ipcMain.handle("settings:save", (_e, patch) => {
   if (tray && "hotkey" in p) buildTray();
   return { settings, hotkeyError };
 });
-ipcMain.handle("mods:reload", () => (reloadMods(), modsState()));
+ipcMain.handle("mods:reload", async () => (reloadMods(), await discoverApps(), modsState()));
 ipcMain.handle("mods:folder", () => shell.openPath(MODS_DIR));
 ipcMain.handle("mods:check", () => checkUpdates({ install: settings.autoUpdate }));
 ipcMain.handle("mods:install", async (_e, id) => {
@@ -333,6 +372,8 @@ app.whenReady().then(async () => {
   const copied = seedDefaults(DEFAULT_MODS, MODS_DIR);
   if (copied.length) log("Mitgelieferte Mods eingerichtet:", copied.join(", "));
   assistant.reload(settings.disabled);
+  discoverApps();
+  setInterval(discoverApps, 30 * 60 * 1000); // neu installierte Apps alle 30 Minuten übernehmen
   hotkeyError = registerHotkey();
   if (!SMOKE) buildTray();
   createWindow(!(SMOKE || process.argv.includes("--hidden") || settings.startHidden));

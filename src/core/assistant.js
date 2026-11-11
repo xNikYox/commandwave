@@ -4,6 +4,7 @@ const { loadAll } = require("./mods");
 
 const UNKNOWN = "Diesen Befehl kenne ich leider nicht.";
 const FAILED = "Das hat leider nicht geklappt.";
+const NOTHING = "Ich habe nichts gehört.";
 
 class Assistant {
   /** opts = { modsDir, actions, dataDir, say, notify, log, disabled: [] } */
@@ -14,6 +15,13 @@ class Assistant {
     this.compiled = [];
     this.slots = {};
     this.grammar = ["[unk]"];
+    this.extraSlots = {}; // z. B. installierte Apps für {app} – Werte aus Mods haben Vorrang
+  }
+
+  /** Zusätzliche Platzhalter-Werte (installierte Apps) setzen und Grammatik neu bauen */
+  setExtraSlots(extra) {
+    this.extraSlots = extra || {};
+    return this.reload();
   }
 
   reload(disabled = this.opts.disabled || []) {
@@ -21,7 +29,8 @@ class Assistant {
     const r = loadAll(this.opts.modsDir, host, disabled);
     this.mods = r.mods;
     this.errors = r.errors;
-    this.slots = r.slots;
+    this.slots = { ...r.slots };
+    for (const [name, values] of Object.entries(this.extraSlots)) if (this.slots[name]) this.slots[name] = { ...values, ...this.slots[name] };
     this.compiled = P.compile(r.commands);
     this.grammar = P.grammar(this.compiled, this.slots);
     return this.summary();
@@ -33,8 +42,8 @@ class Assistant {
 
   /** Gesprochenen Text verarbeiten → { ok, say, heard, command, mod, score } */
   async handle(text) {
-    const heard = P.normalize(text).replace(/\[unk\]/g, "").trim();
-    if (!heard) return { ok: false, say: UNKNOWN, heard };
+    const heard = P.normalize(String(text || "").replace(/\[unk\]/gi, " ")).trim(); // erst [unk] weg, dann Satzzeichen
+    if (!heard) return { ok: false, say: NOTHING, heard, nothing: true };
     const m = P.match(heard, this.compiled, this.slots);
     if (!m) return { ok: false, say: UNKNOWN, heard };
     const c = m.command;
@@ -70,4 +79,4 @@ function fillDeep(v, slots) {
   return v;
 }
 
-module.exports = { Assistant, UNKNOWN, FAILED, fillDeep };
+module.exports = { Assistant, UNKNOWN, FAILED, NOTHING, fillDeep };
