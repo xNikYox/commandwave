@@ -29,7 +29,7 @@ Write-Host "4) prüfen"
 if (-not (Test-Path $exe)) { throw "App nach dem Update NICHT mehr installiert" }
 $new = (Get-Item $exe).VersionInfo.ProductVersion
 Write-Host "   Version jetzt: $new"
-if ($new -ne $NewVersion) { throw "falsche Version nach dem Update: $new (erwartet $NewVersion)" }
+if (-not ($new -eq $NewVersion -or $new -eq "$NewVersion.0")) { throw "falsche Version nach dem Update: $new (erwartet $NewVersion)" }
 if (-not (Test-Path (Join-Path $data 'update-test-merker.txt'))) { throw "App-Daten nach dem Update verloren" }
 if (-not (Test-Path (Join-Path $data 'mods'))) { throw "Mods-Ordner nach dem Update verloren" }
 $p = Get-Process CommandWave -ErrorAction SilentlyContinue
