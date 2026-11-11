@@ -1,7 +1,7 @@
 {
   "name": "commandwave",
   "productName": "CommandWave",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "CommandWave – lokaler Sprachassistent für Windows 11 mit Mods",
   "author": "xNikYox",
   "license": "UNLICENSED",
@@ -59,7 +59,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "CommandWave",
       "runAfterFinish": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
     },
     "publish": [
       {

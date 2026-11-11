@@ -47,6 +47,11 @@ jobs:
           $v = (Get-Content package.json | ConvertFrom-Json).version
           gh release download --repo "${{ github.repository }}" --pattern "CommandWave-Setup.exe" --dir old --clobber
           ./test/update-test.ps1 -OldSetup (Resolve-Path old/CommandWave-Setup.exe) -NewSetup (Resolve-Path "dist/CommandWave-Setup-$v.exe") -NewVersion $v
+      - name: Installer über kaputter Altversion
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          ./test/broken-old-test.ps1 -OldSetup (Resolve-Path old/CommandWave-Setup.exe) -NewSetup (Resolve-Path "dist/CommandWave-Setup-$v.exe") -NewVersion $v
       - uses: actions/upload-artifact@v4
         with:
           name: CommandWave
