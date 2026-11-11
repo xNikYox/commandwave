@@ -195,6 +195,12 @@ function createWindow(show = true) {
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
   win.removeMenu();
+  if (SMOKE) {
+    // Testmodus: Meldungen aus dem Fenster mit ausgeben
+    win.webContents.on("console-message", (e, level, message) => console.log("[fenster]", typeof e?.message === "string" ? e.message : message));
+    win.webContents.on("did-fail-load", (_e, code, desc, url) => console.log("[laden fehlgeschlagen]", code, desc, url));
+    win.webContents.on("render-process-gone", (_e, d) => console.log("[fenster abgestürzt]", JSON.stringify(d)));
+  }
   win.loadURL("cw://app/index.html");
   win.once("ready-to-show", () => show && win.show());
   win.on("close", (e) => {

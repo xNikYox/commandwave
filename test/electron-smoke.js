@@ -21,6 +21,9 @@ child.on("exit", (code) => {
   }
   const r = JSON.parse(line.slice(line.indexOf("SMOKE ") + 6));
   console.log(JSON.stringify(r, null, 2));
-  if (!r.ok) process.exit(1);
+  if (!r.ok) {
+    console.log("--- Protokoll der App ---\n" + out.split(/\r?\n/).filter((l) => !/SMOKE /.test(l)).slice(-80).join("\n"));
+    process.exit(1);
+  }
   console.log("App-Test bestanden: Modell geladen, Erkenner arbeitet, Befehle laufen.");
 });

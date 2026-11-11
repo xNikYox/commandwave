@@ -307,8 +307,10 @@ cw.onAppUpdate(renderAppUpdate);
   renderMods();
   renderSettings();
   cw.appUpdate().then(renderAppUpdate);
+  if (state.smoke) console.log("Testmodus: lade Modell …", location.href);
   try {
     await speech.load(new URL("model/vosk-model-de.tar.gz", location.href).href); // im Worker braucht Vosk eine volle Adresse
+    if (state.smoke) console.log("Testmodus: Modell geladen");
     speech.setGrammar(state.grammar);
     ready = true;
     idle();
