@@ -222,7 +222,12 @@ function compactGrammar(compiled, slotValues = {}, perSlot = 2) {
       let texts = [""];
       for (const p of v) {
         if (p.t === "w") texts = texts.map((t) => t + " " + p.v);
-        else texts = texts.flatMap((t) => Object.keys(slotValues[p.v] || {}).slice(0, perSlot).map((k) => t + " " + normalize(k)));
+        else {
+          // kleine Wertelisten (Zahlen, Webseiten …) ganz – nur große (z. B. 100+ Apps) mit wenigen Beispielen
+          const keys = Object.keys(slotValues[p.v] || {});
+          texts = texts.flatMap((t) => (keys.length <= 30 ? keys : keys.slice(0, perSlot)).map((k) => t + " " + normalize(k)));
+        }
+        if (texts.length > 400) texts = texts.slice(0, 400);
       }
       for (const t of texts) out.add(t.trim());
     }
