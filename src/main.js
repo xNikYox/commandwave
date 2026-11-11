@@ -199,7 +199,8 @@ function setupAppUpdates() {
 const asset = (f) => path.join(ROOT, "build", f);
 
 function createWindow(show = true) {
-  win = new BrowserWindow({
+  // eigene Variable je Fenster: Ereignisse eines alten Fensters dürfen nie ein neues treffen
+  const w = new BrowserWindow({
     width: 460,
     height: 680,
     minWidth: 400,
@@ -212,36 +213,45 @@ function createWindow(show = true) {
     titleBarOverlay: { color: "#12141a", symbolColor: "#c8d0e0", height: 36 },
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
-  win.removeMenu();
+  win = w;
+  w.removeMenu();
   if (SMOKE) {
     // Testmodus: Meldungen aus dem Fenster mit ausgeben
-    win.webContents.on("console-message", (e) => console.log("[fenster]", e.message));
-    win.webContents.on("did-fail-load", (_e, code, desc, url) => console.log("[laden fehlgeschlagen]", code, desc, url));
-    win.webContents.on("render-process-gone", (_e, d) => console.log("[fenster abgestürzt]", JSON.stringify(d)));
+    w.webContents.on("console-message", (e) => console.log("[fenster]", e.message));
+    w.webContents.on("did-fail-load", (_e, code, desc, url) => console.log("[laden fehlgeschlagen]", code, desc, url));
+    w.webContents.on("render-process-gone", (_e, d) => console.log("[fenster abgestürzt]", JSON.stringify(d)));
   }
-  win.loadURL("cw://app/index.html");
-  win.once("ready-to-show", () => show && win.show());
-  win.on("close", (e) => {
+  w.loadURL("cw://app/index.html");
+  w.once("ready-to-show", () => show && !w.isDestroyed() && w.show());
+  w.on("close", (e) => {
     if (!quitting && settings.closeToTray) {
       e.preventDefault();
-      win.hide();
+      w.hide();
     }
   });
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  // Fenster wurde wirklich geschlossen (Beenden, Update, „Schließen ins Tray“ aus) → vergessen,
+  // sonst greift „Fenster zeigen“ später auf ein zerstörtes Fenster zu („Object has been destroyed“)
+  w.on("closed", () => {
+    if (win === w) win = null;
+  });
+  w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
+  return w;
 }
 
+const alive = () => win && !win.isDestroyed();
+
 function showWindow() {
-  if (!win) return createWindow(true);
+  if (!alive()) return createWindow(true);
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
 }
 
 function send(ch, data) {
-  if (win && !win.isDestroyed()) win.webContents.send(ch, data);
+  if (alive() && !win.webContents.isDestroyed()) win.webContents.send(ch, data);
 }
 
 function buildTray() {
@@ -301,7 +311,7 @@ let foundApps = 0;
 
 /** Zuhören starten (Tastenkombination, Tray oder Knopf) */
 function listen() {
-  if (!win) createWindow(false);
+  if (!alive()) createWindow(false);
   if (settings.showOnHotkey) showWindow();
   send("listen");
 }
@@ -345,7 +355,7 @@ ipcMain.handle("mods:install", async (_e, id) => {
     return { ok: false, error: e.message, state: modsState() };
   }
 });
-ipcMain.handle("window:hide", () => win?.hide());
+ipcMain.handle("window:hide", () => alive() && win.hide());
 ipcMain.handle("app:update", () => appUpdate);
 ipcMain.handle("app:checkUpdate", () => (autoUpdater ? autoUpdater.checkForUpdates().then(() => appUpdate).catch((e) => ({ ...appUpdate, status: "error", error: e.message })) : { status: "dev" }));
 ipcMain.handle("app:installUpdate", () => {
@@ -379,9 +389,20 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler((wc, perm) => perm === "media" && !!wc && wc.getURL().startsWith("cw://app/"));
 
   if (FULLTEST) {
+    // Nachstellen des gemeldeten Absturzes: Fenster zerstört, dann App erneut gestartet / Tray geklickt
+    let windowTest = "nicht gelaufen";
+    setTimeout(() => {
+      try {
+        win?.destroy();
+        app.emit("second-instance");
+        windowTest = alive() ? "Fenster neu geöffnet" : "kein Fenster";
+      } catch (e) {
+        windowTest = "Fehler: " + e.message;
+      }
+    }, 25000);
     // Test des normalen Starts (Tray, App-Updater, Mod-Updates, App-Suche): 45 s laufen lassen, Stand ausgeben, beenden
     setTimeout(() => {
-      console.log("FULLTEST " + JSON.stringify({ mods: assistant.mods.map((m) => m.id + "@" + m.version), foundApps, updates: { errors: updates.errors, installed: updates.installed }, appUpdate, tray: !!tray, grammar: assistant.grammar.length }));
+      console.log("FULLTEST " + JSON.stringify({ windowTest, mods: assistant.mods.map((m) => m.id + "@" + m.version), foundApps, updates: { errors: updates.errors, installed: updates.installed }, appUpdate, tray: !!tray, grammar: assistant.grammar.length }));
       quitting = true;
       app.exit(0);
     }, 45000);

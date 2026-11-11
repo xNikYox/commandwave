@@ -19,6 +19,8 @@ child.on("exit", (code) => {
   const errors = lines.filter((l) => l.includes("FEHLER ") || /Uncaught|TypeError|ReferenceError|Cannot find module/.test(l));
   const res = lines.find((l) => l.includes("FULLTEST "));
   console.log(res ? JSON.stringify(JSON.parse(res.slice(res.indexOf("FULLTEST ") + 9)), null, 2) : "keine FULLTEST-Ausgabe (Code " + code + ")");
+  const r = res ? JSON.parse(res.slice(res.indexOf("FULLTEST ") + 9)) : null;
+  if (r && r.windowTest !== "Fenster neu geöffnet") errors.push("Fenster-Test: " + r.windowTest);
   if (errors.length || !res) {
     console.log("--- Fehler / Protokoll ---\n" + (errors.length ? errors.join("\n") : lines.slice(-60).join("\n")));
     process.exit(1);
