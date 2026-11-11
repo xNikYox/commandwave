@@ -348,9 +348,11 @@ function registerHotkey() {
 ipcMain.handle("state", async () => ({ settings, version: app.getVersion(), modsDir: MODS_DIR, hotkeyError: hotkeyError, smoke: SMOKE, ...(SMOKE ? await smokeExtras() : {}), ...modsState() }));
 
 /** Testmodus: Testsätze mit der Windows-Stimme als WAV sprechen lassen + bisherige Satz-Grammatik zum Vergleich */
-const SMOKE_SENTENCES = ["öffne die app editor", "wie spät ist es", "nächstes lied", "schließe den tab"];
+const SMOKE_SENTENCES = ["öffne die app editor", "wie spät ist es", "nächstes lied", "schließe den tab", "lauter", "pause", "was läuft gerade", "neuer tab",
+  "welcher tag ist heute", "öffne youtube", "starte den rechner", "mach leiser", "öffne downloads", "stelle einen timer auf fünf minuten", "was kannst du", "würfle"];
 async function smokeExtras() {
-  const out = { phraseGrammar: require("./core/phrases").grammar(assistant.compiled, assistant.slots), audio: [] };
+  const P = require("./core/phrases");
+  const out = { grammars: { saetze: P.grammar(assistant.compiled, assistant.slots), kompakt: P.compactGrammar(assistant.compiled, assistant.slots), woerter: P.vocabulary(assistant.compiled, assistant.slots) }, audio: [] };
   if (process.platform !== "win32") return out;
   const dir = path.join(DATA, "testaudio");
   fs.mkdirSync(dir, { recursive: true });

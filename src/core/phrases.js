@@ -211,6 +211,29 @@ function grammar(compiled, slotValues = {}, limit = 6000) {
 }
 
 /**
+ * Kompakte Grammatik: jedes Befehlsmuster mit nur wenigen Beispielwerten für Platzhalter, dazu jeder Platzhalter-Wert
+ * genau einmal. Vosk macht daraus eine Wortschleife, in der häufige Befehlswörter stärker zählen (wie bei der vollen
+ * Satzliste), ohne dass jeder App-Name in jedem Muster wiederholt wird.
+ */
+function compactGrammar(compiled, slotValues = {}, perSlot = 2) {
+  const out = new Set();
+  for (const c of compiled) {
+    for (const v of c.variants) {
+      let texts = [""];
+      for (const p of v) {
+        if (p.t === "w") texts = texts.map((t) => t + " " + p.v);
+        else texts = texts.flatMap((t) => Object.keys(slotValues[p.v] || {}).slice(0, perSlot).map((k) => t + " " + normalize(k)));
+      }
+      for (const t of texts) out.add(t.trim());
+    }
+  }
+  const used = new Set(compiled.flatMap((c) => c.variants.flatMap((v) => v.filter((p) => p.t === "slot").map((p) => p.v))));
+  for (const name of used) for (const key of Object.keys(slotValues[name] || {})) out.add(normalize(key));
+  for (const f of ["bitte"]) out.add(f);
+  return [...out, "[unk]"];
+}
+
+/**
  * Wortschatz für die Erkennung: jedes Wort genau einmal. Vosk macht aus der Grammatik ohnehin eine einfache
  * Wort-Schleife – jede Wiederholung eines Wortes wäre ein zusätzlicher Pfad, der nur Rechenzeit kostet.
  * Die Reihenfolge prüft danach der Satz-Abgleich (match).
@@ -246,4 +269,4 @@ function fill(template, slots = {}, extra = {}) {
 
 const capitalize = (s) => String(s).replace(/^\p{L}/u, (c) => c.toUpperCase());
 
-module.exports = { normalize, parse, expand, similarity, match, matchSeq, compile, grammar, vocabulary, fill };
+module.exports = { normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };

@@ -412,9 +412,22 @@ async function audioTest() {
       rec.remove();
       return { text, ms, command: text ? (await cw.match(text))?.command || null : null };
     };
-    results.push({ said: a.text, saetze: await run(state.phraseGrammar), woerter: await run(state.grammar) });
+    const r = { said: a.text };
+    for (const [name, g] of Object.entries(state.grammars)) r[name] = await run(g);
+    results.push(r);
   }
-  return results;
+  // Auswertung: wie oft wurde der richtige Befehl erkannt, wie schnell
+  const want = await Promise.all(results.map(async (r) => (await cw.match(r.said))?.command || null));
+  const summary = {};
+  for (const name of Object.keys(state.grammars || {})) {
+    summary[name] = {
+      eintraege: state.grammars[name].reduce((n, x) => n + x.split(" ").length, 0),
+      richtig: results.filter((r, i) => r[name].command && r[name].command === want[i]).length + "/" + results.length,
+      woertlich: results.filter((r) => r[name].text === r.said).length,
+      msGesamt: results.reduce((n, r) => n + r[name].ms, 0),
+    };
+  }
+  return { summary, results };
 }
 
 /** Testmodus: Modell geladen? Erkenner verarbeitet Ton? Befehle laufen? Stimmen da? → an den Hauptprozess */
