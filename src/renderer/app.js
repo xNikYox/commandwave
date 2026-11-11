@@ -355,7 +355,7 @@ $("#addSource").addEventListener("submit", async (e) => {
 function renderAppUpdate(u) {
   const t = {
     idle: "Updates kommen automatisch.", dev: "Im Entwicklungsmodus keine Updates.", checking: "Suche nach Updates …", current: "Du hast die neueste Version.",
-    downloading: `Lade Version ${u.version || ""} … ${u.percent || 0} %`, ready: `Version ${u.version} ist bereit – wird beim Beenden installiert.`, error: "Update-Prüfung fehlgeschlagen: " + (u.error || ""),
+    downloading: `Lade Version ${u.version || ""} … ${u.percent || 0} %`, ready: `Version ${u.version} ist bereit – wird installiert, wenn du CommandWave ein paar Minuten nicht benutzt.`, error: "Update-Prüfung fehlgeschlagen: " + (u.error || ""),
   };
   $("#appUpdateText").textContent = `Version ${state.version} · ` + (t[u.status] || t.idle);
   const b = $("#appUpdateBtn");

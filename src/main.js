@@ -173,14 +173,40 @@ function notify(title, body) {
   if (Notification.isSupported()) new Notification({ title, body, icon: asset("icon.png") }).show();
 }
 
-/* ---------------- App-Updates (GitHub-Releases, electron-updater) ---------------- */
+/* ---------------- App-Updates (GitHub-Releases, electron-updater) ----------------
+ * Sicher installieren: NICHT beim Beenden (fährt Windows dabei herunter oder bremst der Virenscanner den Installer,
+ * ist die alte Version schon weg und die neue noch nicht da). Stattdessen, wenn CommandWave ein paar Minuten nicht
+ * benutzt wurde: Installer still starten, danach startet die App von selbst wieder. Nie während Windows herunterfährt. */
 const appUpdate = { status: "idle", version: null, percent: 0, error: null };
 let autoUpdater = null;
+let lastActivity = Date.now();
+let sessionEnding = false;
+const IDLE_BEFORE_INSTALL = 3 * 60 * 1000;
+const touch = () => (lastActivity = Date.now());
+
+/** Protokoll für Updates: …\CommandWave\update.log */
+const updateLog = (level) => (...a) => {
+  try {
+    fs.appendFileSync(path.join(DATA, "update.log"), `[${new Date().toISOString()}] ${level}: ${a.map((x) => (x && x.stack) || String(x)).join(" ")}\n`);
+  } catch {
+    // nicht schreibbar
+  }
+};
+
+function installUpdateNow() {
+  if (!autoUpdater || appUpdate.status !== "ready" || sessionEnding) return false;
+  updateLog("info")("Installiere Version", appUpdate.version);
+  quitting = true;
+  autoUpdater.quitAndInstall(true, true); // still installieren, danach wieder starten
+  return true;
+}
+
 function setupAppUpdates() {
   if (!app.isPackaged || SMOKE) return;
   ({ autoUpdater } = require("electron-updater"));
+  autoUpdater.logger = { info: updateLog("info"), warn: updateLog("warn"), error: updateLog("error"), debug: () => {} };
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   const set = (p) => {
     Object.assign(appUpdate, p);
     send("appUpdate", appUpdate);
@@ -191,12 +217,20 @@ function setupAppUpdates() {
   autoUpdater.on("download-progress", (p) => set({ status: "downloading", percent: Math.round(p.percent) }));
   autoUpdater.on("update-downloaded", (i) => {
     set({ status: "ready", version: i.version });
-    notify("CommandWave-Update bereit", `Version ${i.version} wird beim Beenden installiert.`);
+    notify("CommandWave-Update bereit", `Version ${i.version} wird installiert, sobald du CommandWave ein paar Minuten nicht benutzt.`);
+    buildTray();
   });
-  autoUpdater.on("error", (e) => set({ status: "error", error: String(e?.message || e).slice(0, 200) }));
+  autoUpdater.on("error", (e) => {
+    updateLog("error")(e);
+    set({ status: "error", error: String(e?.message || e).slice(0, 200) });
+  });
   const check = () => settings.appAutoUpdate && autoUpdater.checkForUpdates().catch(() => {});
   setTimeout(check, 10000);
   setInterval(check, 4 * 3600 * 1000);
+  // jede Minute: ist ein Update bereit und CommandWave seit ein paar Minuten unbenutzt? → jetzt installieren
+  setInterval(() => {
+    if (appUpdate.status === "ready" && settings.appAutoUpdate && Date.now() - lastActivity > IDLE_BEFORE_INSTALL && !(alive() && win.isFocused())) installUpdateNow();
+  }, 60 * 1000);
 }
 
 /* ---------------- Fenster & Tray ---------------- */
@@ -238,6 +272,18 @@ function createWindow(show = true) {
   w.on("closed", () => {
     if (win === w) win = null;
   });
+  // Windows meldet sich ab / fährt herunter: jetzt kein Update installieren
+  w.on("query-session-end", () => (sessionEnding = true));
+  w.on("session-end", () => (sessionEnding = true));
+  // Fenster (oder Spracherkennung darin) abgestürzt: protokollieren und neu öffnen statt stehen zu bleiben
+  w.webContents.on("render-process-gone", (_e, d) => {
+    logCrash("Fenster abgestürzt", new Error(JSON.stringify(d)));
+    if (quitting || d.reason === "clean-exit") return;
+    if (win === w) win = null;
+    if (!w.isDestroyed()) w.destroy();
+    setTimeout(() => createWindow(false), 1000);
+  });
+  w.webContents.on("unresponsive", () => logCrash("Fenster reagiert nicht", new Error("unresponsive")));
   w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
     return { action: "deny" };
@@ -269,7 +315,7 @@ function buildTray() {
     { label: "Mods neu laden", click: reloadMods },
     { label: "Nach Mod-Updates suchen", click: () => checkUpdates() },
     { label: "Mods-Ordner öffnen", click: () => shell.openPath(MODS_DIR) },
-    ...(appUpdate.status === "ready" ? [{ label: `Update ${appUpdate.version} jetzt installieren`, click: () => autoUpdater.quitAndInstall(true, true) }] : []),
+    ...(appUpdate.status === "ready" ? [{ label: `Update ${appUpdate.version} jetzt installieren`, click: installUpdateNow }] : []),
     { type: "separator" },
     { label: "Beenden", click: () => app.quit() },
   ]));
@@ -321,6 +367,7 @@ let lastAppsSig = "";
 
 /** Zuhören starten (Tastenkombination, Tray oder Knopf) */
 function listen() {
+  touch();
   if (!alive()) createWindow(false);
   if (settings.showOnHotkey) showWindow();
   send("listen");
@@ -371,7 +418,7 @@ ipcMain.handle("smoke", (_e, data) => {
   console.log("SMOKE " + JSON.stringify(data));
   setTimeout(() => app.exit(data && data.ok ? 0 : 1), 200);
 });
-ipcMain.handle("command", (_e, text) => assistant.handle(String(text || "")));
+ipcMain.handle("command", (_e, text) => (touch(), assistant.handle(String(text || ""))));
 ipcMain.handle("settings:save", (_e, patch) => {
   const allowed = Object.keys(DEFAULTS);
   const p = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => allowed.includes(k)));
@@ -411,12 +458,7 @@ ipcMain.handle("hotkey:pause", () => globalShortcut.unregisterAll());
 ipcMain.handle("hotkey:resume", () => (hotkeyError = registerHotkey()));
 ipcMain.handle("app:update", () => appUpdate);
 ipcMain.handle("app:checkUpdate", () => (autoUpdater ? autoUpdater.checkForUpdates().then(() => appUpdate).catch((e) => ({ ...appUpdate, status: "error", error: e.message })) : { status: "dev" }));
-ipcMain.handle("app:installUpdate", () => {
-  if (autoUpdater && appUpdate.status === "ready") {
-    quitting = true;
-    autoUpdater.quitAndInstall(true, true);
-  }
-});
+ipcMain.handle("app:installUpdate", () => installUpdateNow());
 
 let hotkeyError = null;
 
@@ -497,4 +539,7 @@ app.on("window-all-closed", () => {
   // läuft im Tray weiter
 });
 app.on("before-quit", () => (quitting = true));
+app.on("child-process-gone", (_e, d) => {
+  if (d.reason !== "clean-exit" && d.reason !== "killed") logCrash("Hilfsprozess beendet", new Error(JSON.stringify(d)));
+});
 app.on("will-quit", () => globalShortcut.unregisterAll());

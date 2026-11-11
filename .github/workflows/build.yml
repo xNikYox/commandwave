@@ -39,6 +39,14 @@ jobs:
         env:
           CW_EXE: dist/win-unpacked/CommandWave.exe
         run: node test/full-start.js
+      - name: Update-Test (alte Version → neue, wie das Auto-Update)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          gh release download --repo "${{ github.repository }}" --pattern "CommandWave-Setup.exe" --dir old --clobber
+          ./test/update-test.ps1 -OldSetup (Resolve-Path old/CommandWave-Setup.exe) -NewSetup (Resolve-Path "dist/CommandWave-Setup-$v.exe") -NewVersion $v
       - uses: actions/upload-artifact@v4
         with:
           name: CommandWave
