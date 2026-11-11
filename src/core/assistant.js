@@ -32,12 +32,18 @@ class Assistant {
     this.slots = { ...r.slots };
     for (const [name, values] of Object.entries(this.extraSlots)) if (this.slots[name]) this.slots[name] = { ...values, ...this.slots[name] };
     this.compiled = P.compile(r.commands);
-    this.grammar = P.grammar(this.compiled, this.slots);
+    this.grammar = P.vocabulary(this.compiled, this.slots); // Wortschatz für die Erkennung (jedes Wort einmal)
     return this.summary();
   }
 
   summary() {
     return { mods: this.mods, errors: this.errors, commands: this.compiled.length, grammarSize: this.grammar.length };
+  }
+
+  /** Nur zuordnen, nichts ausführen (für Tests) → { command, score } | null */
+  matchOnly(text) {
+    const m = P.match(P.normalize(String(text || "").replace(/\[unk\]/gi, " ")), this.compiled, this.slots);
+    return m ? { command: m.command.id, score: m.score } : null;
   }
 
   /** Gesprochenen Text verarbeiten → { ok, say, heard, command, mod, score } */

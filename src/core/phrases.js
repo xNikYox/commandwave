@@ -211,6 +211,21 @@ function grammar(compiled, slotValues = {}, limit = 6000) {
 }
 
 /**
+ * Wortschatz für die Erkennung: jedes Wort genau einmal. Vosk macht aus der Grammatik ohnehin eine einfache
+ * Wort-Schleife – jede Wiederholung eines Wortes wäre ein zusätzlicher Pfad, der nur Rechenzeit kostet.
+ * Die Reihenfolge prüft danach der Satz-Abgleich (match).
+ */
+function vocabulary(compiled, slotValues = {}) {
+  const words = new Set();
+  const add = (t) => normalize(t).split(" ").forEach((w) => w && words.add(w));
+  for (const c of compiled) for (const v of c.variants) for (const p of v) if (p.t === "w") add(p.v);
+  const used = new Set(compiled.flatMap((c) => c.variants.flatMap((v) => v.filter((p) => p.t === "slot").map((p) => p.v))));
+  for (const name of used) for (const key of Object.keys(slotValues[name] || {})) add(key);
+  for (const f of ["bitte", "mal", "den", "die", "das", "der"]) words.add(f); // häufige Füllwörter, die der Abgleich überspringt
+  return [...[...words].sort(), "[unk]"];
+}
+
+/**
  * Text mit {platzhalter} füllen: {app} → Anzeigename, {app.value} → Wert (bei Objekten target), {app.key} → Schlüssel,
  * {app.heard} → gehörtes Wort, {app.irgendwas} → Eigenschaft des Werts (z. B. {app.process})
  */
@@ -231,4 +246,4 @@ function fill(template, slots = {}, extra = {}) {
 
 const capitalize = (s) => String(s).replace(/^\p{L}/u, (c) => c.toUpperCase());
 
-module.exports = { normalize, parse, expand, similarity, match, matchSeq, compile, grammar, fill };
+module.exports = { normalize, parse, expand, similarity, match, matchSeq, compile, grammar, vocabulary, fill };

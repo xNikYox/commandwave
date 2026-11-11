@@ -53,3 +53,12 @@ test("Antworten mit Platzhaltern füllen", () => {
   assert.equal(P.fill("{app}", { app: { key: "rechner", value: "calc.exe" } }), "Rechner");
   assert.equal(P.fill("{gibts} {app.nicht}", s), "{gibts} {app.nicht}");
 });
+
+test("Wortschatz für die Erkennung: jedes Wort einmal, viel kleiner als alle Sätze", () => {
+  const v = P.vocabulary(cmds, slots);
+  assert.equal(new Set(v).size, v.length);
+  for (const w of ["öffne", "die", "app", "editor", "task", "manager", "wie", "spät", "lauter", "bitte"]) assert.ok(v.includes(w), w);
+  assert.equal(v.at(-1), "[unk]");
+  const all = P.grammar(cmds, slots).reduce((n, x) => n + x.split(" ").length, 0);
+  assert.ok(v.length * 4 < all, `${v.length} Wörter statt ${all} Einträgen`);
+});

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("cw", {
   pauseHotkeys: () => ipcRenderer.invoke("hotkey:pause"),
   resumeHotkeys: () => ipcRenderer.invoke("hotkey:resume"),
   smoke: (data) => ipcRenderer.invoke("smoke", data),
+  match: (text) => ipcRenderer.invoke("match", text),
   appUpdate: () => ipcRenderer.invoke("app:update"),
   checkAppUpdate: () => ipcRenderer.invoke("app:checkUpdate"),
   installAppUpdate: () => ipcRenderer.invoke("app:installUpdate"),

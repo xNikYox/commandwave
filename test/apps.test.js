@@ -55,7 +55,8 @@ test("gefundene Apps: „Öffne Visual Studio Code“ startet über den Explorer
   assert.equal(calls.at(-1).line, "notepad.exe");
   // Programme werden NICHT mit verstecktem Fenster gestartet
   assert.ok(calls.every((c) => !c.opts?.windowsHide), "windowsHide darf nicht gesetzt sein");
-  assert.ok(a.grammar.includes("öffne visual studio code"));
+  for (const w of ["öffne", "visual", "studio", "code", "gimp", "[unk]"]) assert.ok(a.grammar.includes(w), w);
+  assert.equal(new Set(a.grammar).size, a.grammar.length, "jedes Wort nur einmal");
 });
 
 test("nichts gehört → eigene Antwort statt „Befehl unbekannt“", async () => {

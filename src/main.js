@@ -31,6 +31,8 @@ if (!app.requestSingleInstanceLock()) {
   return;
 }
 app.setAppUserModelId("de.xnikyox.commandwave");
+// kleines Fenster ohne 3D: ohne Grafikkarten-Prozess spart CommandWave Speicher und Energie
+app.disableHardwareAcceleration();
 
 // Eigenes Protokoll cw:// für Oberfläche, Erkennung und Sprachmodell (fetch/Worker brauchen eine echte Herkunft)
 protocol.registerSchemesAsPrivileged([{ scheme: "cw", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
@@ -54,6 +56,7 @@ const DEFAULTS = {
   volume: 1,
   micId: "",
   maxSeconds: 7,
+  unloadMinutes: 0, // Sparmodus: Spracherkennung nach x Minuten ohne Benutzung entladen (0 = aus)
   beep: true,
   showOnHotkey: false,
   autostart: false,
@@ -298,8 +301,13 @@ function discoverApps() {
       try {
         const slots = toSlots(JSON.parse(stdout || "[]"));
         foundApps = Object.keys(slots).length;
-        assistant.setExtraSlots({ app: slots });
-        send("mods", modsState());
+        // nur neu aufbauen, wenn sich die Apps geändert haben (spart den Neuaufbau der Erkennung)
+        const sig = JSON.stringify(Object.keys(slots).sort());
+        if (sig !== lastAppsSig) {
+          lastAppsSig = sig;
+          assistant.setExtraSlots({ app: slots });
+          send("mods", modsState());
+        }
         resolve(foundApps);
       } catch (e) {
         log("Apps-Liste kaputt:", e.message);
@@ -309,6 +317,7 @@ function discoverApps() {
   });
 }
 let foundApps = 0;
+let lastAppsSig = "";
 
 /** Zuhören starten (Tastenkombination, Tray oder Knopf) */
 function listen() {
@@ -336,7 +345,25 @@ function registerHotkey() {
 }
 
 /* ---------------- IPC (Fenster ↔ Hauptprozess) ---------------- */
-ipcMain.handle("state", () => ({ settings, version: app.getVersion(), modsDir: MODS_DIR, hotkeyError: hotkeyError, smoke: SMOKE, ...modsState() }));
+ipcMain.handle("state", async () => ({ settings, version: app.getVersion(), modsDir: MODS_DIR, hotkeyError: hotkeyError, smoke: SMOKE, ...(SMOKE ? await smokeExtras() : {}), ...modsState() }));
+
+/** Testmodus: Testsätze mit der Windows-Stimme als WAV sprechen lassen + bisherige Satz-Grammatik zum Vergleich */
+const SMOKE_SENTENCES = ["öffne die app editor", "wie spät ist es", "nächstes lied", "schließe den tab"];
+async function smokeExtras() {
+  const out = { phraseGrammar: require("./core/phrases").grammar(assistant.compiled, assistant.slots), audio: [] };
+  if (process.platform !== "win32") return out;
+  const dir = path.join(DATA, "testaudio");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [i, text] of SMOKE_SENTENCES.entries()) {
+    const file = path.join(dir, `satz${i}.wav`);
+    const ps = "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
+      `$f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono); $s.SetOutputToWaveFile('${file.replace(/'/g, "''")}', $f); $s.Speak('${text}'); $s.Dispose()`;
+    await new Promise((r) => execFile("powershell.exe", ["-NoProfile", "-Command", ps], { windowsHide: true, timeout: 30000 }, r));
+    if (fs.existsSync(file)) out.audio.push({ text, url: `cw://app/testaudio/satz${i}.wav` });
+  }
+  return out;
+}
+ipcMain.handle("match", (_e, text) => (SMOKE ? assistant.matchOnly(text) : null));
 ipcMain.handle("smoke", (_e, data) => {
   if (!SMOKE) return;
   console.log("SMOKE " + JSON.stringify(data));
@@ -403,6 +430,7 @@ app.whenReady().then(async () => {
     let base = path.join(__dirname, "renderer");
     let sub = rel;
     if (rel.startsWith("vosk/")) (base = path.join(ROOT, "node_modules", "vosk-browser", "dist")), (sub = rel.slice(5));
+    else if (SMOKE && rel.startsWith("testaudio/")) (base = path.join(DATA, "testaudio")), (sub = rel.slice(10));
     else if (rel.startsWith("model/")) (base = path.join(RES, "models")), (sub = rel.slice(6));
     const file = path.join(base, sub);
     if (u.host !== "app" || !file.startsWith(base + path.sep) || !fs.existsSync(file)) return new Response("Nicht gefunden", { status: 404 });
@@ -432,7 +460,14 @@ app.whenReady().then(async () => {
     }, 30000);
     // Test des normalen Starts (Tray, App-Updater, Mod-Updates, App-Suche): 45 s laufen lassen, Stand ausgeben, beenden
     setTimeout(() => {
-      console.log("FULLTEST " + JSON.stringify({ windowTest, hotkeys, mods: assistant.mods.map((m) => m.id + "@" + m.version), foundApps, updates: { errors: updates.errors, installed: updates.installed }, appUpdate, tray: !!tray, grammar: assistant.grammar.length }));
+      const m = app.getAppMetrics();
+      const perf = {
+        processes: m.length,
+        memoryMB: Math.round(m.reduce((a, p) => a + (p.memory?.workingSetSize || 0), 0) / 1024),
+        cpuPercent: Math.round(m.reduce((a, p) => a + (p.cpu?.percentCPUUsage || 0), 0) * 10) / 10,
+        types: m.map((p) => p.type).join(","),
+      };
+      console.log("FULLTEST " + JSON.stringify({ windowTest, hotkeys, perf, mods: assistant.mods.map((m) => m.id + "@" + m.version), foundApps, updates: { errors: updates.errors, installed: updates.installed }, appUpdate, tray: !!tray, grammar: assistant.grammar.length }));
       quitting = true;
       app.exit(0);
     }, 45000);

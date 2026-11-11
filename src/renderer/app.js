@@ -12,10 +12,13 @@ let ready = false;
 function setStatus(text, mode = "") {
   $("#status").textContent = text;
   document.body.dataset.mode = mode; // "" | listening | thinking | speaking | error
+  if (typeof wave !== "undefined") wave.kick();
 }
 const idle = () => setStatus(state?.settings.hotkey ? `Bereit – ${keyLabel()} drücken und sprechen` : "Bereit – Mikrofon anklicken und sprechen", "");
 
 /* ---------------- Zuhören → verstehen → antworten ---------------- */
+const MIN_CONF = 0.45; // darunter lieber nachfragen als einen falschen Befehl ausführen
+
 async function listen() {
   if (!ready) return;
   if (speech.listening) return speech.stop();
@@ -24,18 +27,40 @@ async function listen() {
   $("#heard").hidden = true;
   $("#answer").hidden = true;
   try {
+    if (!speech.loaded) {
+      setStatus("Lade Spracherkennung …", "thinking");
+      await speech.load(speech.url);
+      speech.setGrammar(state.grammar);
+    }
     if (s.beep) speech.beep(true);
-    const text = await speech.listen({
+    setTimeout(() => wave.kick(), 50);
+    const r = await speech.listen({
       deviceId: s.micId,
       maxSeconds: s.maxSeconds,
       onStart: () => setStatus("Ich höre zu …", "listening"),
       onPartial: (t) => bubble("#heard", t),
     });
     if (s.beep) speech.beep(false);
-    await handle(text);
+    if (r.text && r.conf != null && r.conf < MIN_CONF) {
+      bubble("#heard", r.text + " ?");
+      const say = "Das habe ich nicht sicher verstanden. Sag es bitte noch einmal.";
+      bubble("#answer", say, "miss");
+      setStatus(say, "speaking");
+      await speakAnswer(say);
+      idle();
+    } else await handle(r.text);
   } catch (e) {
     setStatus(e.name === "NotAllowedError" ? "Kein Zugriff aufs Mikrofon – in Windows unter Datenschutz → Mikrofon erlauben" : e.name === "NotFoundError" ? "Kein Mikrofon gefunden" : "Fehler: " + e.message, "error");
   }
+  scheduleUnload();
+}
+
+/** Sparmodus: Sprachmodell nach einigen Minuten ohne Benutzung aus dem Speicher nehmen */
+let unloadTimer = null;
+function scheduleUnload() {
+  clearTimeout(unloadTimer);
+  const min = Number(state.settings.unloadMinutes) || 0;
+  if (min > 0) unloadTimer = setTimeout(() => speech.unload(), min * 60 * 1000);
 }
 
 async function handle(text) {
@@ -50,6 +75,7 @@ async function handle(text) {
   idle();
 }
 
+const speakAnswer = (t) => say(t);
 function say(text) {
   const s = state.settings;
   return speech.speak(text, { voice: s.voice, rate: Number(s.rate) || 1, volume: Number(s.volume) });
@@ -76,35 +102,62 @@ $("#typed").addEventListener("submit", async (e) => {
   await handle(t);
 });
 
-/* ---------------- Wellen-Anzeige ---------------- */
-(function wave() {
+/* ---------------- Wellen-Anzeige (nur beim Zuhören/Sprechen – sonst keine Rechenzeit) ---------------- */
+const wave = (function () {
   const c = $("#wave");
   const g = c.getContext("2d");
   let phase = 0;
-  const draw = () => {
+  let running = false;
+  const active = () => !document.hidden && (speech.listening || document.body.dataset.mode === "speaking");
+  const drawLine = () => {
+    g.clearRect(0, 0, c.width, c.height);
+    const grad = g.createLinearGradient(0, 0, c.width, 0);
+    grad.addColorStop(0, "rgba(124,108,255,.8)");
+    grad.addColorStop(1, "rgba(34,211,238,.8)");
+    g.strokeStyle = grad;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(0, c.height / 2);
+    g.lineTo(c.width, c.height / 2);
+    g.stroke();
+  };
+  const frame = () => {
+    if (!active()) {
+      running = false;
+      return drawLine(); // Ruhe: eine gerade Linie, keine weiteren Bilder
+    }
     const w = c.width;
     const h = c.height;
     g.clearRect(0, 0, w, h);
-    const lvl = speech.listening ? 0.15 + speech.level : document.body.dataset.mode === "speaking" ? 0.35 : 0.06;
-    phase += speech.listening ? 0.22 : 0.06;
+    const lvl = speech.listening ? 0.15 + speech.level : 0.35;
+    phase += speech.listening ? 0.22 : 0.08;
     for (const [k, a] of [[1, 1], [1.7, 0.5], [2.6, 0.3]]) {
       g.beginPath();
-      for (let x = 0; x <= w; x += 3) {
+      for (let x = 0; x <= w; x += 4) {
         const env = Math.sin((x / w) * Math.PI);
         const y = h / 2 + Math.sin(x / (18 / k) + phase * k) * env * lvl * (h / 2.4) * a;
         x ? g.lineTo(x, y) : g.moveTo(x, y);
       }
       const grad = g.createLinearGradient(0, 0, w, 0);
-      grad.addColorStop(0, "rgba(124,108,255," + (0.9 * a) + ")");
-      grad.addColorStop(1, "rgba(34,211,238," + (0.9 * a) + ")");
+      grad.addColorStop(0, "rgba(124,108,255," + 0.9 * a + ")");
+      grad.addColorStop(1, "rgba(34,211,238," + 0.9 * a + ")");
       g.strokeStyle = grad;
       g.lineWidth = 2;
       g.stroke();
     }
-    requestAnimationFrame(draw);
+    requestAnimationFrame(frame);
   };
-  draw();
+  drawLine();
+  return {
+    kick() {
+      if (!running && active()) {
+        running = true;
+        requestAnimationFrame(frame);
+      }
+    },
+  };
 })();
+document.addEventListener("visibilitychange", () => wave.kick());
 
 /* ---------------- Tabs ---------------- */
 $$(".tab").forEach((b) => b.addEventListener("click", () => {
@@ -338,6 +391,32 @@ cw.onAppUpdate(renderAppUpdate);
   if (state.smoke) smokeTest();
 })();
 
+/** Testmodus: Windows-Stimme spricht Testsätze → Erkennung mit Satz-Grammatik (bisher) und Wortschatz (neu) */
+async function audioTest() {
+  const results = [];
+  for (const a of state.audio || []) {
+    const buf = await (await fetch(a.url)).arrayBuffer();
+    const decoded = await new AudioContext({ sampleRate: 16000 }).decodeAudioData(buf);
+    const pcm = decoded.getChannelData(0);
+    const run = async (grammar) => {
+      const rec = new speech.model.KaldiRecognizer(16000, JSON.stringify(grammar));
+      const t0 = performance.now();
+      const text = await new Promise((resolve) => {
+        rec.on("result", (m) => resolve(m.result.text));
+        for (let i = 0; i < pcm.length; i += 1600) rec.acceptWaveformFloat(pcm.slice(i, i + 1600), 16000);
+        rec.acceptWaveformFloat(new Float32Array(8000), 16000);
+        rec.retrieveFinalResult();
+        setTimeout(() => resolve(null), 15000);
+      });
+      const ms = Math.round(performance.now() - t0);
+      rec.remove();
+      return { text, ms, command: text ? (await cw.match(text))?.command || null : null };
+    };
+    results.push({ said: a.text, saetze: await run(state.phraseGrammar), woerter: await run(state.grammar) });
+  }
+  return results;
+}
+
 /** Testmodus: Modell geladen? Erkenner verarbeitet Ton? Befehle laufen? Stimmen da? → an den Hauptprozess */
 async function smokeTest() {
   const out = { ok: false, ready, status: $("#status").textContent, commands: state.commands.length, grammar: state.grammar.length, mods: state.mods.length };
@@ -356,6 +435,7 @@ async function smokeTest() {
       });
       speech.session = null;
     }
+    out.audioTest = await audioTest();
     out.time = await cw.command("wie spät ist es");
     out.unknown = await cw.command("erzähl mir einen witz");
     const voices = await speech.voicesReady();

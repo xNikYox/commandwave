@@ -57,6 +57,7 @@
         <p class="err" id="hotkeyError" hidden></p>
         <label class="row"><span>Mikrofon</span><select id="mic-select"></select></label>
         <label class="row"><span>Höchstens zuhören</span><select data-set="maxSeconds" data-num><option value="4">4 Sekunden</option><option value="7">7 Sekunden</option><option value="10">10 Sekunden</option><option value="15">15 Sekunden</option></select></label>
+        <label class="row"><span>Speicher sparen<small class="sub">Spracherkennung entladen, wenn sie eine Weile nicht benutzt wurde – das nächste Zuhören dauert dann ~2 s länger</small></span><select data-set="unloadMinutes" data-num><option value="0">aus</option><option value="5">nach 5 Minuten</option><option value="15">nach 15 Minuten</option><option value="60">nach 1 Stunde</option></select></label>
         <label class="row"><span>Signalton beim Zuhören</span><input type="checkbox" class="switch" data-set="beep"></label>
         <label class="row"><span>Fenster bei Tastenkombination zeigen</span><input type="checkbox" class="switch" data-set="showOnHotkey"></label>
       </div>

@@ -17,8 +17,27 @@
 
     /** Sprachmodell laden (einmal beim Start, dauert ein paar Sekunden) */
     async load(url) {
+      this.url = url;
       this.model = await Vosk.createModel(url);
+      this.grammar = null;
+      this.rec = null;
       return this;
+    }
+
+    get loaded() {
+      return !!this.model;
+    }
+
+    /** Sprachmodell aus dem Speicher werfen (Sparmodus) – beim nächsten Zuhören wird es neu geladen */
+    unload() {
+      if (!this.model || this.session) return;
+      try {
+        this.model.terminate();
+      } catch {
+        // schon beendet
+      }
+      this.model = null;
+      this.rec = null;
     }
 
     /** Erlaubte Sätze setzen (aus den Mods) – neuer Erkenner */
@@ -32,6 +51,7 @@
         // schon weg
       }
       this.rec = new this.model.KaldiRecognizer(SAMPLE_RATE, g);
+      this.rec.setWords(true); // je Wort eine Sicherheit (conf) – für die Sicherheitsschwelle
       // Ereignisse nur einmal je Erkenner anmelden und an die laufende Aufnahme weitergeben
       this.rec.on("result", (m) => this.session?.onResult(m));
       this.rec.on("partialresult", (m) => this.session?.onPart(m));
@@ -43,7 +63,7 @@
 
     /**
      * Zuhören, bis ein Satz erkannt ist, Stille folgt oder maxSeconds um sind.
-     * → Promise<string> (leer = nichts verstanden). onPartial(text) zeigt Zwischenstände.
+     * → Promise<{ text, conf }> (text leer = nichts verstanden; conf = Sicherheit 0..1). onPartial(text) zeigt Zwischenstände.
      */
     async listen({ deviceId = "", maxSeconds = 7, onPartial = () => {}, onStart = () => {} } = {}) {
       if (!this.rec) throw new Error("Spracherkennung noch nicht bereit");
@@ -51,37 +71,41 @@
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { deviceId: deviceId ? { exact: deviceId } : undefined, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+      const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: "interactive" });
+      await ctx.audioWorklet.addModule("audio-worklet.js");
       const src = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      const proc = ctx.createScriptProcessor(4096, 1, 1);
-      src.connect(analyser);
-      src.connect(proc);
-      proc.connect(ctx.destination);
-      const buf = new Float32Array(analyser.fftSize);
+      const node = new AudioWorkletNode(ctx, "cw-capture");
+      src.connect(node); // Ausgang bleibt offen: nichts wird abgespielt
 
       return new Promise((resolve) => {
         let lastPartial = "";
         let lastChange = Date.now();
         let heardSomething = false;
         const started = Date.now();
-        const finish = (text) => {
+        const finish = (text, conf = null) => {
           if (!this.session) return;
           const s = this.session;
           this.session = null;
           clearInterval(s.timer);
-          proc.disconnect();
-          src.disconnect();
+          node.port.onmessage = null;
+          try {
+            src.disconnect();
+            node.disconnect();
+          } catch {
+            // schon getrennt
+          }
           stream.getTracks().forEach((t) => t.stop());
           ctx.close().catch(() => {});
           this.level = 0;
-          resolve(clean(text));
+          resolve({ text: clean(text), conf });
         };
         const onResult = (m) => {
           const t = clean(m.result?.text);
-          if (t) finish(t);
-          else if (this.session?.final) finish("");
+          // Sicherheit: Mittel über die erkannten Wörter (ohne [unk])
+          const words = (m.result?.result || []).filter((w) => w.word !== "[unk]");
+          const conf = words.length ? words.reduce((a, w) => a + (w.conf ?? 1), 0) / words.length : null;
+          if (t) finish(t, conf);
+          else if (this.session?.final) finish("", null);
         };
         const onPart = (m) => {
           const t = clean(m.result?.partial);
@@ -92,17 +116,14 @@
             onPartial(t);
           }
         };
-        proc.onaudioprocess = (e) => {
+        node.port.onmessage = (e) => {
           if (!this.session) return;
+          this.level = Math.min(1, e.data.level * 6);
           try {
-            this.rec.acceptWaveform(e.inputBuffer);
+            this.rec.acceptWaveformFloat(e.data.data, SAMPLE_RATE);
           } catch {
             // Erkenner wurde gerade ersetzt
           }
-          analyser.getFloatTimeDomainData(buf);
-          let sum = 0;
-          for (const v of buf) sum += v * v;
-          this.level = Math.min(1, Math.sqrt(sum / buf.length) * 6);
         };
         this.session = {
           final: false,
@@ -111,13 +132,13 @@
           stop: () => {
             this.session.final = true;
             this.rec.retrieveFinalResult();
-            setTimeout(() => finish(lastPartial), 800); // falls kein Ergebnis mehr kommt
+            setTimeout(() => finish(lastPartial, null), 800); // falls kein Ergebnis mehr kommt
           },
           timer: setInterval(() => {
             const now = Date.now();
-            // nach dem Sprechen ~1,2 s Ruhe → fertig; sonst nach maxSeconds
-            if ((heardSomething && now - lastChange > 1200) || now - started > maxSeconds * 1000) this.session?.stop();
-          }, 150),
+            // nach dem Sprechen ~1 s Ruhe → fertig; sonst nach maxSeconds
+            if ((heardSomething && now - lastChange > 1000) || now - started > maxSeconds * 1000) this.session?.stop();
+          }, 120),
         };
         onStart();
       });
