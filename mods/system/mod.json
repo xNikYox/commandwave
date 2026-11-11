@@ -1,0 +1,32 @@
+{
+  "id": "system",
+  "name": "Windows & Ordner",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "Ordner öffnen („Öffne Downloads“), Windows-Einstellungen („Öffne die Bluetooth Einstellungen“), PC sperren.",
+  "slots": {
+    "ordner": {
+      "downloads": { "target": "%USERPROFILE%\\Downloads", "label": "Downloads" },
+      "dokumente": { "target": "%USERPROFILE%\\Documents", "label": "Dokumente" },
+      "bilder": { "target": "%USERPROFILE%\\Pictures", "label": "Bilder" },
+      "musik": { "target": "%USERPROFILE%\\Music", "label": "Musik" },
+      "videos": { "target": "%USERPROFILE%\\Videos", "label": "Videos" },
+      "desktop": { "target": "%USERPROFILE%\\Desktop", "label": "Desktop" }
+    },
+    "einstellung": {
+      "bluetooth": { "target": "ms-settings:bluetooth", "label": "Bluetooth" },
+      "wlan": { "target": "ms-settings:network-wifi", "label": "WLAN" },
+      "anzeige": { "target": "ms-settings:display", "label": "Anzeige" },
+      "sound": { "target": "ms-settings:sound", "label": "Sound" },
+      "update": { "target": "ms-settings:windowsupdate", "label": "Windows Update" },
+      "apps": { "target": "ms-settings:appsfeatures", "label": "Apps" },
+      "spracheingabe": { "target": "ms-settings:speech", "label": "Spracheingabe" },
+      "drucker": { "target": "ms-settings:printers", "label": "Drucker" }
+    }
+  },
+  "commands": [
+    { "phrases": ["öffne [den ordner] {ordner}", "zeig [mir] [meine] {ordner}"], "say": "{ordner} wird geöffnet", "action": { "type": "open", "target": "{ordner.value}" } },
+    { "phrases": ["öffne [die] {einstellung} einstellungen", "{einstellung} einstellungen"], "say": "Ich öffne die Einstellungen für {einstellung}.", "action": { "type": "open", "target": "{einstellung.value}" } },
+    { "phrases": ["(sperre|sperr) [den] (computer|pc|bildschirm)"], "say": "Der Computer wird gesperrt.", "action": { "type": "run", "target": "rundll32.exe", "args": ["user32.dll,LockWorkStation"] } }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "uhrzeit",
+  "name": "Uhrzeit, Datum & Timer",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "Beispiel für eine Skript-Mod mit eigener Logik (main.js): „Wie spät ist es?“, „Welcher Tag ist heute?“, „Stelle einen Timer auf fünf Minuten“.",
+  "main": "main.js",
+  "slots": {
+    "zahl": {
+      "eins": 1, "eine": 1, "einen": 1, "zwei": 2, "drei": 3, "vier": 4, "fünf": 5, "sechs": 6, "sieben": 7, "acht": 8, "neun": 9, "zehn": 10,
+      "elf": 11, "zwölf": 12, "fünfzehn": 15, "zwanzig": 20, "fünfundzwanzig": 25, "dreißig": 30, "vierzig": 40, "fünfundvierzig": 45, "sechzig": 60, "neunzig": 90
+    }
+  }
+}

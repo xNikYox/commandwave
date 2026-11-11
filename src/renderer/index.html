@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' blob: data:; style-src 'self'; img-src 'self' data:; media-src 'self' blob: mediastream:">
+  <title>CommandWave</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="titlebar">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c6cff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><rect x="1" y="1" width="30" height="30" rx="9" fill="url(#g)"/><path d="M6 17c2.5 0 2.5-6 5-6s2.5 10 5 10 2.5-14 5-14 2.5 10 5 10" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>CommandWave</span>
+  </header>
+
+  <main>
+    <section class="stage">
+      <button class="mic" id="mic" aria-label="Zuhören">
+        <span class="ring"></span><span class="ring r2"></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-5a3.5 3.5 0 1 0-7 0v5A3.5 3.5 0 0 0 12 15Z"/><path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v3.5M8.5 20.5h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <div class="status" id="status">Lade Spracherkennung …</div>
+      <div class="hint" id="hint"></div>
+      <canvas class="wave" id="wave" width="360" height="44" aria-hidden="true"></canvas>
+      <div class="bubble you" id="heard" hidden></div>
+      <div class="bubble cw" id="answer" hidden></div>
+      <form class="typed" id="typed">
+        <input id="typedInput" placeholder="… oder Befehl eintippen" autocomplete="off">
+      </form>
+    </section>
+
+    <nav class="tabs">
+      <button class="tab on" data-tab="befehle">Befehle</button>
+      <button class="tab" data-tab="mods">Mods</button>
+      <button class="tab" data-tab="einstellungen">Einstellungen</button>
+    </nav>
+
+    <section class="page on" id="page-befehle">
+      <input class="search" id="search" placeholder="Befehle durchsuchen …">
+      <div id="commands"></div>
+    </section>
+
+    <section class="page" id="page-mods">
+      <div class="row-btns">
+        <button class="btn" id="reload">Neu laden</button>
+        <button class="btn" id="folder">Mods-Ordner öffnen</button>
+        <button class="btn primary" id="check">Nach Updates suchen</button>
+      </div>
+      <div id="updates"></div>
+      <div id="mods"></div>
+      <div id="modErrors"></div>
+    </section>
+
+    <section class="page" id="page-einstellungen">
+      <div class="card">
+        <h3>Zuhören</h3>
+        <label class="row"><span>Tastenkombination</span><input class="key" id="hotkey" readonly></label>
+        <p class="err" id="hotkeyError" hidden></p>
+        <label class="row"><span>Mikrofon</span><select id="mic-select"></select></label>
+        <label class="row"><span>Höchstens zuhören</span><select data-set="maxSeconds" data-num><option value="4">4 Sekunden</option><option value="7">7 Sekunden</option><option value="10">10 Sekunden</option><option value="15">15 Sekunden</option></select></label>
+        <label class="row"><span>Signalton beim Zuhören</span><input type="checkbox" class="switch" data-set="beep"></label>
+        <label class="row"><span>Fenster bei Tastenkombination zeigen</span><input type="checkbox" class="switch" data-set="showOnHotkey"></label>
+      </div>
+      <div class="card">
+        <h3>Stimme</h3>
+        <label class="row"><span>Stimme</span><select id="voice"></select></label>
+        <label class="row"><span>Tempo</span><input type="range" min="0.6" max="1.6" step="0.1" data-set="rate" data-num></label>
+        <label class="row"><span>Lautstärke</span><input type="range" min="0" max="1" step="0.1" data-set="volume" data-num></label>
+        <div class="row"><span class="muted small" id="voiceHint"></span><button class="btn" id="testVoice">Probe</button></div>
+      </div>
+      <div class="card">
+        <h3>Mod-Updates</h3>
+        <label class="row"><span>Beim Start prüfen</span><input type="checkbox" class="switch" data-set="checkOnStart"></label>
+        <label class="row"><span>Installierte Mods automatisch aktualisieren</span><input type="checkbox" class="switch" data-set="autoUpdate"></label>
+        <div id="sources"></div>
+        <form class="addsrc" id="addSource">
+          <select id="srcType"><option value="github">GitHub</option><option value="folder">Ordner</option><option value="url">Adresse</option></select>
+          <input id="srcValue" placeholder="name/repository" required>
+          <button class="btn">Quelle hinzufügen</button>
+        </form>
+      </div>
+      <div class="card">
+        <h3>Start</h3>
+        <label class="row"><span>Mit Windows starten</span><input type="checkbox" class="switch" data-set="autostart"></label>
+        <label class="row"><span>Im Tray starten (ohne Fenster)</span><input type="checkbox" class="switch" data-set="startHidden"></label>
+        <label class="row"><span>Schließen versteckt ins Tray</span><input type="checkbox" class="switch" data-set="closeToTray"></label>
+      </div>
+      <p class="muted small center" id="about"></p>
+    </section>
+  </main>
+
+  <script src="vosk/vosk.js"></script>
+  <script src="speech.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

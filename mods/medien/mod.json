@@ -1,0 +1,76 @@
+{
+  "id": "medien",
+  "name": "Lautstärke & Musik",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "„Lauter“, „Leiser“, „Ton aus“, „Pause“, „Nächstes Lied“ – funktioniert mit Spotify, YouTube im Browser und den meisten Playern.",
+  "commands": [
+    {
+      "phrases": [
+        "[mach] lauter",
+        "lautstärke (hoch|rauf|erhöhen)"
+      ],
+      "say": "",
+      "action": {
+        "type": "media",
+        "key": "volume_up",
+        "times": 5
+      }
+    },
+    {
+      "phrases": [
+        "[mach] leiser",
+        "lautstärke (runter|verringern)"
+      ],
+      "say": "",
+      "action": {
+        "type": "media",
+        "key": "volume_down",
+        "times": 5
+      }
+    },
+    {
+      "phrases": [
+        "[mach] (ton|stumm) (aus|an)",
+        "stumm schalten"
+      ],
+      "say": "",
+      "action": {
+        "type": "media",
+        "key": "mute"
+      }
+    },
+    {
+      "phrases": [
+        "(pause|weiter|play|abspielen)",
+        "musik (pausieren|fortsetzen|anhalten)"
+      ],
+      "say": "",
+      "action": {
+        "type": "media",
+        "key": "play_pause"
+      }
+    },
+    {
+      "phrases": [
+        "nächstes (lied|video)",
+        "überspringen"
+      ],
+      "say": "",
+      "action": {
+        "type": "media",
+        "key": "next"
+      }
+    },
+    {
+      "phrases": [
+        "(vorheriges|letztes) (lied|video)"
+      ],
+      "say": "",
+      "action": {
+        "type": "media",
+        "key": "previous"
+      }
+    }
+  ]
+}

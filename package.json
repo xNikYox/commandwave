@@ -1,0 +1,40 @@
+{
+  "name": "commandwave",
+  "productName": "CommandWave",
+  "version": "1.0.0",
+  "description": "CommandWave – lokaler Sprachassistent für Windows 11 mit Mods",
+  "author": "xNikYox",
+  "license": "UNLICENSED",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "model": "node scripts/get-model.js",
+    "index": "node scripts/build-index.js",
+    "dist:win": "electron-builder --win portable zip --x64 --publish never"
+  },
+  "dependencies": {
+    "vosk-browser": "^0.0.8"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "de.xnikyox.commandwave",
+    "productName": "CommandWave",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "build/icon.png", "build/tray*.png", "package.json", "node_modules/vosk-browser/dist/**/*"],
+    "extraResources": [
+      { "from": "mods", "to": "mods-default" },
+      { "from": "models", "to": "models" }
+    ],
+    "win": {
+      "target": ["portable", "zip"],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false,
+      "artifactName": "CommandWave-${version}-win.${ext}"
+    },
+    "portable": { "artifactName": "CommandWave-${version}.exe" }
+  }
+}

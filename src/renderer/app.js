@@ -1,0 +1,299 @@
+// CommandWave – Fenster: Zuhören, Antwort sprechen, Befehle, Mods & Updates, Einstellungen.
+const cw = window.cw;
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+const speech = new Speech();
+let state = null;
+let ready = false;
+
+/* ---------------- Status ---------------- */
+function setStatus(text, mode = "") {
+  $("#status").textContent = text;
+  document.body.dataset.mode = mode; // "" | listening | thinking | speaking | error
+}
+const pretty = (k) => String(k || "").replace("Control", "Strg").replace("Space", "Leertaste").replace(/\+/g, " + ");
+const idle = () => setStatus(`Bereit – ${pretty(state?.settings.hotkey) || "Knopf"} drücken und sprechen`, "");
+
+/* ---------------- Zuhören → verstehen → antworten ---------------- */
+async function listen() {
+  if (!ready) return;
+  if (speech.listening) return speech.stop();
+  speechSynthesis.cancel();
+  const s = state.settings;
+  $("#heard").hidden = true;
+  $("#answer").hidden = true;
+  try {
+    if (s.beep) speech.beep(true);
+    const text = await speech.listen({
+      deviceId: s.micId,
+      maxSeconds: s.maxSeconds,
+      onStart: () => setStatus("Ich höre zu …", "listening"),
+      onPartial: (t) => bubble("#heard", t),
+    });
+    if (s.beep) speech.beep(false);
+    await handle(text);
+  } catch (e) {
+    setStatus(e.name === "NotAllowedError" ? "Kein Zugriff aufs Mikrofon – in Windows unter Datenschutz → Mikrofon erlauben" : e.name === "NotFoundError" ? "Kein Mikrofon gefunden" : "Fehler: " + e.message, "error");
+  }
+}
+
+async function handle(text) {
+  bubble("#heard", text || "(nichts verstanden)");
+  setStatus("Verstehe …", "thinking");
+  const r = await cw.command(text);
+  if (r.say) {
+    bubble("#answer", r.say, r.ok ? "" : "miss");
+    setStatus(r.say, "speaking");
+    await say(r.say);
+  } else if (r.ok) bubble("#answer", "✓ Erledigt");
+  idle();
+}
+
+function say(text) {
+  const s = state.settings;
+  return speech.speak(text, { voice: s.voice, rate: Number(s.rate) || 1, volume: Number(s.volume) });
+}
+
+function bubble(sel, text, cls = "") {
+  const el = $(sel);
+  el.textContent = text;
+  el.className = "bubble " + (sel === "#heard" ? "you" : "cw") + (cls ? " " + cls : "");
+  el.hidden = !text;
+}
+
+$("#mic").addEventListener("click", listen);
+cw.onListen(listen);
+cw.onSpeak(async (text) => {
+  bubble("#answer", text);
+  await say(text);
+});
+$("#typed").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const t = $("#typedInput").value.trim();
+  if (!t) return;
+  $("#typedInput").value = "";
+  await handle(t);
+});
+
+/* ---------------- Wellen-Anzeige ---------------- */
+(function wave() {
+  const c = $("#wave");
+  const g = c.getContext("2d");
+  let phase = 0;
+  const draw = () => {
+    const w = c.width;
+    const h = c.height;
+    g.clearRect(0, 0, w, h);
+    const lvl = speech.listening ? 0.15 + speech.level : document.body.dataset.mode === "speaking" ? 0.35 : 0.06;
+    phase += speech.listening ? 0.22 : 0.06;
+    for (const [k, a] of [[1, 1], [1.7, 0.5], [2.6, 0.3]]) {
+      g.beginPath();
+      for (let x = 0; x <= w; x += 3) {
+        const env = Math.sin((x / w) * Math.PI);
+        const y = h / 2 + Math.sin(x / (18 / k) + phase * k) * env * lvl * (h / 2.4) * a;
+        x ? g.lineTo(x, y) : g.moveTo(x, y);
+      }
+      const grad = g.createLinearGradient(0, 0, w, 0);
+      grad.addColorStop(0, "rgba(124,108,255," + (0.9 * a) + ")");
+      grad.addColorStop(1, "rgba(34,211,238," + (0.9 * a) + ")");
+      g.strokeStyle = grad;
+      g.lineWidth = 2;
+      g.stroke();
+    }
+    requestAnimationFrame(draw);
+  };
+  draw();
+})();
+
+/* ---------------- Tabs ---------------- */
+$$(".tab").forEach((b) => b.addEventListener("click", () => {
+  $$(".tab").forEach((x) => x.classList.toggle("on", x === b));
+  $$(".page").forEach((p) => p.classList.toggle("on", p.id === "page-" + b.dataset.tab));
+}));
+
+/* ---------------- Befehle ---------------- */
+function renderCommands() {
+  const q = $("#search").value.trim().toLowerCase();
+  const byMod = new Map();
+  for (const c of state.commands) {
+    if (q && !c.phrases.some((p) => p.toLowerCase().includes(q)) && !c.mod.includes(q)) continue;
+    if (!byMod.has(c.mod)) byMod.set(c.mod, []);
+    byMod.get(c.mod).push(c);
+  }
+  const name = (id) => state.mods.find((m) => m.id === id)?.name || id;
+  $("#commands").innerHTML = [...byMod].map(([mod, cmds]) => `
+    <div class="group"><h4>${esc(name(mod))}</h4>
+      ${cmds.map((c) => {
+        const slotNames = [...new Set(c.phrases.flatMap((p) => [...p.matchAll(/\{([\w-]+)\}/g)].map((m) => m[1])))];
+        return `<div class="cmd"><span class="say">„${esc(example(c.phrases[0]))}“</span>
+          ${c.phrases.length > 1 ? `<small>auch: ${c.phrases.slice(1, 4).map((p) => "„" + esc(example(p)) + "“").join(", ")}</small>` : ""}
+          ${slotNames.map((n) => `<small class="slot">Statt <b>${esc(firstValue(n))}</b> geht auch: ${esc((state.slots?.[n] || []).filter((x, i, a) => a.indexOf(x) === i).slice(1, 12).join(", "))}${(state.slots?.[n] || []).length > 12 ? " …" : ""}</small>`).join("")}</div>`;
+      }).join("")}
+    </div>`).join("") || `<p class="muted center">Keine Befehle gefunden.</p>`;
+}
+
+/** Muster als Beispielsatz: [optional] mitnehmen, (a|b) → a, {platzhalter} → erster Wert */
+const firstValue = (slot) => (state.slots?.[slot] || [])[0] || slot;
+function example(pattern) {
+  let t = pattern.replace(/\[([^\]]*)\]/g, "$1").replace(/\(([^)|]*)\|[^)]*\)/g, "$1").replace(/\(([^)]*)\)/g, "$1");
+  t = t.replace(/\{([\w-]+)\}/g, (m, n) => firstValue(n));
+  t = t.replace(/\s+/g, " ").trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+$("#search").addEventListener("input", renderCommands);
+
+/* ---------------- Mods & Updates ---------------- */
+function renderMods() {
+  const u = state.updates;
+  const ups = u.list || [];
+  $("#updates").innerHTML = [
+    u.busy ? `<div class="note">Suche nach Updates …</div>` : "",
+    ...ups.map((x) => `<div class="mod up">
+      <div><b>${esc(x.name)}</b> <span class="ver">${x.isNew ? "neu" : esc(x.from) + " →"} ${esc(x.to)}</span>
+        <small>${esc(x.description || "")}${x.script ? " · ⚠ enthält Programmcode – nur aus vertrauenswürdigen Quellen installieren" : ""}<br>Quelle: ${esc(x.sourceLabel)}</small></div>
+      <button class="btn primary" data-install="${esc(x.id)}">${x.isNew ? "Installieren" : "Aktualisieren"}</button></div>`),
+    ...(u.errors || []).map((e) => `<div class="note err">${esc(e.source)}: ${esc(e.error)}</div>`),
+    u.checkedAt && !ups.length && !u.busy ? `<div class="note">Alle Mods sind aktuell (geprüft ${new Date(u.checkedAt).toLocaleTimeString("de-DE")}).</div>` : "",
+    !state.settings.sources.length ? `<div class="note">Noch keine Update-Quelle eingetragen – unter Einstellungen → Mod-Updates.</div>` : "",
+  ].join("");
+  $("#mods").innerHTML = state.mods.map((m) => `<div class="mod${m.enabled ? "" : " off"}">
+      <div><b>${esc(m.name)}</b> <span class="ver">${esc(m.version)}</span>${m.script ? ' <span class="tag">Skript</span>' : ""}
+        <small>${esc(m.description)}</small>
+        <small class="muted">${m.commands} Befehle${m.author ? " · von " + esc(m.author) : ""}${m.error ? ` · <span class="errtxt">${esc(m.error)}</span>` : ""}</small></div>
+      <input type="checkbox" class="switch" data-toggle="${esc(m.id)}" ${m.enabled ? "checked" : ""} title="Mod an/aus">
+    </div>`).join("");
+  $("#modErrors").innerHTML = state.errors.filter((e) => !state.mods.some((m) => m.id === e.dir)).map((e) => `<div class="note err">Mod „${esc(e.dir)}“ nicht geladen: ${esc(e.error)}</div>`).join("");
+  for (const b of $$("[data-install]")) b.onclick = async () => {
+    const x = ups.find((y) => y.id === b.dataset.install);
+    if (x?.isNew && x.script && !confirm(`„${x.name}“ enthält Programmcode, der mit deinen Rechten läuft.\n\nNur installieren, wenn du der Quelle vertraust:\n${x.sourceLabel}`)) return;
+    b.disabled = true;
+    b.textContent = "Lade …";
+    const r = await cw.installMod(b.dataset.install);
+    if (!r.ok) alert("Installation fehlgeschlagen: " + r.error);
+    apply(r.state);
+  };
+  for (const c of $$("[data-toggle]")) c.onchange = async () => {
+    const disabled = new Set(state.settings.disabled);
+    c.checked ? disabled.delete(c.dataset.toggle) : disabled.add(c.dataset.toggle);
+    const r = await cw.saveSettings({ disabled: [...disabled] });
+    state.settings = r.settings;
+  };
+}
+$("#reload").onclick = async () => apply(await cw.reloadMods());
+$("#folder").onclick = () => cw.openModsFolder();
+$("#check").onclick = async () => apply(await cw.checkUpdates());
+
+/** Neuer Stand der Mods (nach Laden, Update, Umschalten) */
+function apply(mods) {
+  Object.assign(state, mods);
+  if (ready) speech.setGrammar(state.grammar);
+  renderCommands();
+  renderMods();
+}
+cw.onMods(apply);
+
+/* ---------------- Einstellungen ---------------- */
+async function renderSettings() {
+  const s = state.settings;
+  for (const el of $$("[data-set]")) {
+    const k = el.dataset.set;
+    if (el.type === "checkbox") el.checked = !!s[k];
+    else el.value = String(s[k]);
+  }
+  $("#hotkey").value = pretty(s.hotkey);
+  $("#hotkeyError").hidden = !state.hotkeyError;
+  $("#hotkeyError").textContent = state.hotkeyError || "";
+  $("#about").textContent = `CommandWave ${state.version} · Mods: ${state.modsDir} · alles läuft offline auf diesem PC`;
+  // Mikrofone (Namen erst nach Erlaubnis sichtbar)
+  const devs = (await navigator.mediaDevices.enumerateDevices().catch(() => [])).filter((d) => d.kind === "audioinput");
+  $("#mic-select").innerHTML = `<option value="">Standard-Mikrofon</option>` + devs.filter((d) => d.deviceId && d.deviceId !== "default").map((d, i) => `<option value="${esc(d.deviceId)}"${d.deviceId === s.micId ? " selected" : ""}>${esc(d.label || "Mikrofon " + (i + 1))}</option>`).join("");
+  // Stimmen
+  const voices = await speech.voicesReady();
+  const de = voices.filter((v) => v.lang.toLowerCase().startsWith("de"));
+  $("#voice").innerHTML = `<option value="">Automatisch (erste deutsche Stimme)</option>` + voices.map((v) => `<option value="${esc(v.name)}"${v.name === s.voice ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("");
+  $("#voiceHint").textContent = de.length ? `${de.length} deutsche Stimme${de.length > 1 ? "n" : ""} gefunden` : "Keine deutsche Stimme – Windows: Einstellungen → Zeit und Sprache → Sprache → Deutsch → Sprachausgabe installieren";
+  renderSources();
+}
+
+for (const el of $$("[data-set]")) el.addEventListener("change", async () => {
+  const k = el.dataset.set;
+  const v = el.type === "checkbox" ? el.checked : el.dataset.num != null ? Number(el.value) : el.value;
+  state.settings = (await cw.saveSettings({ [k]: v })).settings;
+});
+$("#voice").onchange = async (e) => (state.settings = (await cw.saveSettings({ voice: e.target.value })).settings);
+$("#mic-select").onchange = async (e) => (state.settings = (await cw.saveSettings({ micId: e.target.value })).settings);
+$("#testVoice").onclick = () => say("Hallo, ich bin CommandWave. Editor wird gestartet.");
+
+// Tastenkombination aufnehmen: Feld anklicken, Kombination drücken (Entf = keine)
+const KEYS = { Control: "Strg", Alt: "Alt", Shift: "Umschalt", Super: "Win" };
+$("#hotkey").addEventListener("focus", (e) => (e.target.value = "Tasten drücken …"));
+$("#hotkey").addEventListener("blur", (e) => (e.target.value = pretty(state.settings.hotkey)));
+$("#hotkey").addEventListener("keydown", async (e) => {
+  e.preventDefault();
+  if (e.key === "Escape") return e.target.blur();
+  let key = null;
+  if (e.key === "Backspace" || e.key === "Delete") key = "";
+  else {
+    const k = e.code === "Space" ? "Space" : /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5) : /^F\d{1,2}$/.test(e.code) ? e.code : null;
+    const mods = [e.ctrlKey && "Control", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Super"].filter(Boolean);
+    if (!k || (!mods.length && !/^F\d/.test(k))) return;
+    key = [...mods, k].join("+");
+  }
+  const r = await cw.saveSettings({ hotkey: key });
+  state.settings = r.settings;
+  state.hotkeyError = r.hotkeyError;
+  e.target.blur();
+  renderSettings();
+  idle();
+});
+void KEYS;
+
+// Update-Quellen
+function renderSources() {
+  const list = state.settings.sources;
+  const label = (s) => (s.type === "github" ? `GitHub: ${s.repo}${s.dir ? "/" + s.dir : ""}` : s.type === "folder" ? `Ordner: ${s.path}` : `Adresse: ${s.url}`);
+  $("#sources").innerHTML = list.length ? list.map((s, i) => `<div class="row src"><span class="mono">${esc(label(s))}</span><button class="btn" data-del="${i}">Entfernen</button></div>`).join("") : `<p class="muted small">Keine Quelle. Beispiele: GitHub „name/commandwave-mods“, Ordner „\\\\NAS\\Mods“.</p>`;
+  for (const b of $$("[data-del]")) b.onclick = async () => {
+    const next = list.filter((_, i) => i !== Number(b.dataset.del));
+    state.settings = (await cw.saveSettings({ sources: next })).settings;
+    renderSources();
+  };
+}
+$("#srcType").onchange = (e) => ($("#srcValue").placeholder = { github: "name/repository (optional /ordner)", folder: "C:\\Mods oder \\\\NAS\\Mods", url: "https://…/mods/" }[e.target.value]);
+$("#addSource").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const type = $("#srcType").value;
+  const v = $("#srcValue").value.trim();
+  let src;
+  if (type === "github") {
+    const m = /^(?:https:\/\/github\.com\/)?([\w.-]+\/[\w.-]+)(?:\/(.+))?$/.exec(v.replace(/\.git$/, ""));
+    if (!m) return alert("Bitte als name/repository angeben.");
+    src = { type, repo: m[1], branch: "main", dir: m[2] || "" };
+  } else if (type === "folder") src = { type, path: v };
+  else {
+    if (!/^https?:\/\//.test(v)) return alert("Adresse muss mit https:// beginnen.");
+    src = { type, url: v };
+  }
+  state.settings = (await cw.saveSettings({ sources: [...state.settings.sources, src] })).settings;
+  $("#srcValue").value = "";
+  renderSources();
+});
+
+/* ---------------- Start ---------------- */
+(async () => {
+  state = await cw.state();
+  renderCommands();
+  renderMods();
+  renderSettings();
+  try {
+    await speech.load(new URL("model/vosk-model-de.tar.gz", location.href).href); // im Worker braucht Vosk eine volle Adresse
+    speech.setGrammar(state.grammar);
+    ready = true;
+    idle();
+    $("#hint").textContent = `${state.commands.length} Befehle aus ${state.mods.filter((m) => m.enabled).length} Mods · offline`;
+  } catch (e) {
+    setStatus("Spracherkennung konnte nicht geladen werden: " + e.message, "error");
+  }
+})();

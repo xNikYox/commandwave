@@ -1,0 +1,177 @@
+{
+  "id": "apps",
+  "name": "Apps starten und schließen",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "Startet Programme per Sprache: „Öffne die App Editor“, „Starte den Rechner“, „Schließe Paint“. Weitere Apps einfach unten bei slots → app ergänzen. Tipp: Kennt die Spracherkennung ein Wort nicht (z. B. Discord), schreibt man es, wie es klingt („disk kord“).",
+  "slots": {
+    "app": {
+      "editor": {
+        "target": "notepad.exe",
+        "process": "notepad.exe",
+        "label": "Editor"
+      },
+      "notepad": {
+        "target": "notepad.exe",
+        "process": "notepad.exe",
+        "label": "Editor"
+      },
+      "rechner": {
+        "target": "calc.exe",
+        "process": "CalculatorApp.exe",
+        "label": "Rechner"
+      },
+      "taschenrechner": {
+        "target": "calc.exe",
+        "process": "CalculatorApp.exe",
+        "label": "Rechner"
+      },
+      "paint": {
+        "target": "mspaint.exe",
+        "process": "mspaint.exe",
+        "label": "Paint"
+      },
+      "explorer": {
+        "target": "explorer.exe",
+        "process": "",
+        "label": "Explorer"
+      },
+      "datei explorer": {
+        "target": "explorer.exe",
+        "process": "",
+        "label": "Explorer"
+      },
+      "task manager": {
+        "target": "taskmgr.exe",
+        "process": "Taskmgr.exe",
+        "label": "Task-Manager"
+      },
+      "terminal": {
+        "target": "wt.exe",
+        "process": "WindowsTerminal.exe",
+        "label": "Terminal"
+      },
+      "powershell": {
+        "target": "powershell.exe",
+        "process": "powershell.exe",
+        "label": "PowerShell"
+      },
+      "einstellungen": {
+        "target": "ms-settings:",
+        "process": "SystemSettings.exe",
+        "label": "Einstellungen"
+      },
+      "systemsteuerung": {
+        "target": "control.exe",
+        "process": "",
+        "label": "Systemsteuerung"
+      },
+      "kamera": {
+        "target": "microsoft.windows.camera:",
+        "process": "WindowsCamera.exe",
+        "label": "Kamera"
+      },
+      "kalender": {
+        "target": "outlookcal:",
+        "process": "",
+        "label": "Kalender"
+      },
+      "word": {
+        "target": "winword",
+        "process": "WINWORD.EXE",
+        "label": "Word"
+      },
+      "excel": {
+        "target": "excel",
+        "process": "EXCEL.EXE",
+        "label": "Excel"
+      },
+      "outlook": {
+        "target": "outlook",
+        "process": "OUTLOOK.EXE",
+        "label": "Outlook"
+      },
+      "edge": {
+        "target": "msedge",
+        "process": "msedge.exe",
+        "label": "Edge"
+      },
+      "firefox": {
+        "target": "firefox",
+        "process": "firefox.exe",
+        "label": "Firefox"
+      },
+      "chrome": {
+        "target": "chrome",
+        "process": "chrome.exe",
+        "label": "Chrome"
+      },
+      "spotify": {
+        "target": "spotify:",
+        "process": "Spotify.exe",
+        "label": "Spotify"
+      },
+      "steam": {
+        "target": "steam:",
+        "process": "steam.exe",
+        "label": "Steam"
+      },
+      "kommandozeile": {
+        "target": "cmd.exe",
+        "process": "cmd.exe",
+        "label": "Eingabeaufforderung"
+      },
+      "eingabe aufforderung": {
+        "target": "cmd.exe",
+        "process": "cmd.exe",
+        "label": "Eingabeaufforderung"
+      },
+      "bildschirmfoto": {
+        "target": "ms-screenclip:",
+        "process": "",
+        "label": "Bildschirmfoto"
+      },
+      "screenshot": {
+        "target": "ms-screenclip:",
+        "process": "",
+        "label": "Bildschirmfoto"
+      },
+      "disk kord": {
+        "target": "discord:",
+        "process": "Discord.exe",
+        "label": "Discord"
+      }
+    }
+  },
+  "commands": [
+    {
+      "phrases": [
+        "öffne [die app] {app}",
+        "starte [die app] {app}",
+        "(mach|mache) {app} auf",
+        "{app} (öffnen|starten)"
+      ],
+      "say": "{app} wird gestartet",
+      "action": {
+        "type": "run",
+        "target": "{app.value}"
+      }
+    },
+    {
+      "phrases": [
+        "schließe [die app] {app}",
+        "beende [die app] {app}",
+        "(mach|mache) {app} zu"
+      ],
+      "say": "{app} wird geschlossen",
+      "action": {
+        "type": "run",
+        "target": "taskkill.exe",
+        "args": [
+          "/IM",
+          "{app.process}"
+        ]
+      }
+    }
+  ]
+}
