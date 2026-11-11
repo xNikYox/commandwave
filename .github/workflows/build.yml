@@ -31,6 +31,10 @@ jobs:
         run: node test/electron-smoke.js
       - name: Installer bauen
         run: npx electron-builder --win nsis zip --x64 --publish never
+      - name: Gebaute App testen
+        env:
+          CW_EXE: dist/win-unpacked/CommandWave.exe
+        run: node test/electron-smoke.js
       - uses: actions/upload-artifact@v4
         with:
           name: CommandWave

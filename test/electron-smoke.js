@@ -3,7 +3,11 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 const electron = require("electron");
 
-const child = spawn(electron, [path.join(__dirname, ".."), "--smoke"], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ELECTRON_ENABLE_LOGGING: "1" } });
+// CW_EXE gesetzt → die fertig gebaute App testen (dist/win-unpacked/CommandWave.exe), sonst aus dem Quellcode
+const exe = process.env.CW_EXE ? path.resolve(process.env.CW_EXE) : electron;
+const args = process.env.CW_EXE ? ["--smoke"] : [path.join(__dirname, ".."), "--smoke"];
+console.log("Teste:", exe);
+const child = spawn(exe, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ELECTRON_ENABLE_LOGGING: "1" } });
 let out = "";
 child.stdout.on("data", (d) => (out += d));
 child.stderr.on("data", (d) => (out += d));
