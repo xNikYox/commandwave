@@ -1,0 +1,42 @@
+{
+  "id": "browser",
+  "name": "Browser-Tabs",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "„Schließe den Tab“, „Schließe den YouTube Tab“, „Schließe alle Amazon Tabs“, „Neuer Tab“, „Nächster Tab“, „Tab wiederherstellen“ – für Chrome, Edge, Firefox, Brave und Opera. Tipp: Namen, die die Spracherkennung nicht kennt, stehen in Lautschrift („red it“ = Reddit) – gesucht wird trotzdem der richtige Tab.",
+  "main": "main.js",
+  "slots": {
+    "seite": {
+      "ebay": {
+        "target": "https://www.ebay.de",
+        "label": "eBay"
+      },
+      "instagram": {
+        "target": "https://www.instagram.com",
+        "label": "Instagram"
+      },
+      "facebook": {
+        "target": "https://www.facebook.com",
+        "label": "Facebook"
+      },
+      "whatsapp": {
+        "target": "https://web.whatsapp.com",
+        "label": "WhatsApp"
+      },
+      "outlook": {
+        "target": "https://outlook.live.com",
+        "label": "Outlook"
+      },
+      "red it": {
+        "target": "https://www.reddit.com",
+        "label": "Reddit",
+        "match": "reddit"
+      },
+      "pay pal": {
+        "target": "https://www.paypal.com",
+        "label": "PayPal",
+        "match": "paypal"
+      }
+    }
+  }
+}

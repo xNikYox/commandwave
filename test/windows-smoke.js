@@ -67,6 +67,46 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   console.log("„Öffne Downloads“ →", opened.at(-1));
 
   assert.match((await a.handle("wie spät ist es")).say, /Uhr/);
+
+  // Windows-Mediensteuerung (Amazon Music, Spotify …): Abfrage muss laufen – auf dem Testrechner spielt nichts
+  const ms = await actions.mediaSession({ command: "info" });
+  console.log("Mediensteuerung:", JSON.stringify(ms));
+  assert.ok(ms.ok || ms.error === "keine Wiedergabe", "Mediensteuerung nicht erreichbar: " + ms.error);
+  assert.equal((await a.handle("was läuft gerade")).say, "Gerade läuft nichts.");
+  console.log("„Was läuft gerade?“ ohne Wiedergabe: ok");
+
+  // Browser-Tabs: Edge mit zwei Tabs öffnen, gezielt „Alpha“ schließen
+  const edge = ["C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"].find((p) => require("node:fs").existsSync(p));
+  if (edge) {
+    const prof = require("node:fs").mkdtempSync(path.join(os.tmpdir(), "cw-edge-"));
+    require("node:child_process").spawn(edge, ["--no-first-run", "--no-default-browser-check", "--user-data-dir=" + prof, "--new-window",
+      "data:text/html,<title>Alpha Testseite</title>alpha", "data:text/html,<title>Beta Testseite</title>beta"], { detached: true, stdio: "ignore" }).unref();
+    let tabs = [];
+    for (let i = 0; i < 20 && !(tabs.some((t) => /Alpha/.test(t)) && tabs.some((t) => /Beta/.test(t))); i++) {
+      await wait(1000);
+      tabs = (await actions.browser({ op: "list" })).tabs || [];
+    }
+    console.log("Edge-Tabs:", JSON.stringify(tabs));
+    assert.ok(tabs.some((t) => /Alpha/.test(t)) && tabs.some((t) => /Beta/.test(t)), "Tabs nicht gefunden");
+    const r = await actions.browser({ op: "closeMatching", match: "alpha" });
+    console.log("Schließe „alpha“:", JSON.stringify(r));
+    assert.equal(r.count, 1);
+    await wait(1500);
+    tabs = (await actions.browser({ op: "list" })).tabs || [];
+    assert.ok(!tabs.some((t) => /Alpha/.test(t)), "Alpha-Tab noch offen: " + JSON.stringify(tabs));
+    assert.ok(tabs.some((t) => /Beta/.test(t)), "Beta-Tab fehlt");
+    console.log("Tab nach Namen schließen: ok");
+    const before = tabs.length;
+    const n = await actions.browser({ op: "new" });
+    await wait(1500);
+    const after = ((await actions.browser({ op: "list" })).tabs || []).length;
+    console.log(`Neuer Tab per Tastenkürzel: ${JSON.stringify(n)}, Tabs ${before} → ${after}`);
+    try {
+      execFileSync("taskkill", ["/IM", "msedge.exe", "/F"], { stdio: "ignore" });
+    } catch {
+      // schon zu
+    }
+  } else console.log("Edge nicht installiert – Tabs nicht geprüft");
   console.log("Windows-Praxistest bestanden.");
 })().catch((e) => {
   console.error(e);

@@ -1,24 +1,68 @@
 {
   "id": "webseiten",
   "name": "Webseiten öffnen",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "CommandWave",
   "description": "„Öffne YouTube“, „Geh auf Wikipedia“ – öffnet die Seite im Standard-Browser. Eigene Seiten bei slots → seite ergänzen.",
   "slots": {
     "seite": {
-      "youtube": { "target": "https://www.youtube.com", "label": "YouTube" },
-      "google": { "target": "https://www.google.de", "label": "Google" },
-      "wikipedia": { "target": "https://de.wikipedia.org", "label": "Wikipedia" },
-      "amazon": { "target": "https://www.amazon.de", "label": "Amazon" },
-      "netflix": { "target": "https://www.netflix.com", "label": "Netflix" },
-      "twitch": { "target": "https://www.twitch.tv", "label": "Twitch" },
-      "github": { "target": "https://github.com", "label": "GitHub" },
-      "wetter": { "target": "https://www.wetteronline.de", "label": "das Wetter" },
-      "nachrichten": { "target": "https://www.tagesschau.de", "label": "die Nachrichten" },
-      "gmail": { "target": "https://mail.google.com", "label": "Gmail" }
+      "youtube": {
+        "target": "https://www.youtube.com",
+        "label": "YouTube"
+      },
+      "google": {
+        "target": "https://www.google.de",
+        "label": "Google"
+      },
+      "wikipedia": {
+        "target": "https://de.wikipedia.org",
+        "label": "Wikipedia"
+      },
+      "amazon": {
+        "target": "https://www.amazon.de",
+        "label": "Amazon"
+      },
+      "netflix": {
+        "target": "https://www.netflix.com",
+        "label": "Netflix"
+      },
+      "twitch": {
+        "target": "https://www.twitch.tv",
+        "label": "Twitch"
+      },
+      "github": {
+        "target": "https://github.com",
+        "label": "GitHub"
+      },
+      "wetter": {
+        "target": "https://www.wetteronline.de",
+        "label": "das Wetter",
+        "match": "wetter"
+      },
+      "nachrichten": {
+        "target": "https://www.tagesschau.de",
+        "label": "die Nachrichten",
+        "match": "tagesschau"
+      },
+      "gmail": {
+        "target": "https://mail.google.com",
+        "label": "Gmail",
+        "match": "gmail"
+      }
     }
   },
   "commands": [
-    { "phrases": ["öffne [die seite|die webseite] {seite}", "(geh|gehe) auf {seite}", "zeig mir {seite}"], "say": "Ich öffne {seite}.", "action": { "type": "open", "target": "{seite.value}" } }
+    {
+      "phrases": [
+        "öffne [die seite|die webseite] {seite}",
+        "(geh|gehe) auf {seite}",
+        "zeig mir {seite}"
+      ],
+      "say": "Ich öffne {seite}.",
+      "action": {
+        "type": "open",
+        "target": "{seite.value}"
+      }
+    }
   ]
 }

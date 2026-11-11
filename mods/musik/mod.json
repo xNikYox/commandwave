@@ -1,0 +1,60 @@
+{
+  "id": "musik",
+  "name": "Musik steuern",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "„Nächstes Lied“, „Nächstes Lied in Amazon Music“, „Pause bei Spotify“, „Was läuft gerade?“ – über die Windows-Mediensteuerung, gezielt je App (Amazon Music, Spotify, Browser, Medienwiedergabe).",
+  "main": "main.js",
+  "slots": {
+    "player": {
+      "amazon music": {
+        "id": "amazon",
+        "label": "Amazon Music"
+      },
+      "amazon musik": {
+        "id": "amazon",
+        "label": "Amazon Music"
+      },
+      "amazon": {
+        "id": "amazon",
+        "label": "Amazon Music"
+      },
+      "spotify": {
+        "id": "spotify",
+        "label": "Spotify"
+      },
+      "youtube": {
+        "id": "chrome|msedge|firefox|brave|opera",
+        "label": "dem Browser"
+      },
+      "browser": {
+        "id": "chrome|msedge|firefox|brave|opera",
+        "label": "dem Browser"
+      },
+      "chrome": {
+        "id": "chrome",
+        "label": "Chrome"
+      },
+      "edge": {
+        "id": "msedge",
+        "label": "Edge"
+      },
+      "firefox": {
+        "id": "firefox|308046b0af4a39cb",
+        "label": "Firefox"
+      },
+      "media player": {
+        "id": "zunemusic|mediaplayer",
+        "label": "der Medienwiedergabe"
+      },
+      "vlc": {
+        "id": "vlc",
+        "label": "VLC"
+      },
+      "medien wiedergabe": {
+        "id": "zunemusic|mediaplayer",
+        "label": "der Medienwiedergabe"
+      }
+    }
+  }
+}

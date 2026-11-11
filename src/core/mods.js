@@ -13,7 +13,7 @@ const path = require("node:path");
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const VERSION = /^\d+(\.\d+){0,3}([-+][0-9A-Za-z.]+)?$/;
-const ACTIONS = ["run", "open", "say", "media", "keys", "shell", "sequence", "none"];
+const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "keys", "shell", "sequence", "none"];
 
 /** mod.json prüfen → { mod } oder { error } */
 function validate(json, dirName) {
@@ -112,6 +112,10 @@ function makeApi(mod, base, host, commands, slots, info) {
     run: (target, args) => host.actions.run({ target, args }),
     open: (target) => host.actions.open({ target }),
     media: (key, times) => host.actions.media({ key, times }),
+    /** Musik gezielt steuern: api.mediaSession("next", "amazon") → { ok, app, title, artist, status } (ab 1.1) */
+    mediaSession: (command, app) => host.actions.mediaSession({ command, app }),
+    /** Browser-Tabs: api.browser("closeMatching", "youtube") → { ok, count, closed } (ab 1.1) */
+    browser: (op, match, all) => host.actions.browser({ op, match, all }),
     notify: (title, body) => host.notify?.(title, body),
     log: (...a) => host.log?.(`[${mod.id}]`, ...a),
     /** kleiner Speicher je Mod (JSON) */

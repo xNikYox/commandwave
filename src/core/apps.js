@@ -38,6 +38,8 @@ function toSlots(list) {
     if (!key || /^\d+$/.test(key)) continue;
     const value = { target: "shell:AppsFolder\\" + a.AppID, label: a.Name.replace(/[™®©]/g, "").trim(), process: "" };
     add(key, value);
+    // „Music“ spricht man oft deutsch aus („Amazon Musik“)
+    if (/\bmusic\b/.test(key)) add(key.replace(/\bmusic\b/g, "musik"), value);
     const vendor = VENDORS.find((v) => key.startsWith(v + " "));
     if (vendor) add(key.slice(vendor.length + 1), value);
   }

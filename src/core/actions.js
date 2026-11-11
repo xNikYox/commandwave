@@ -8,6 +8,7 @@
 //   sequence mehrere Schritte            { "type": "sequence", "steps": [ {…}, {…} ] }
 //   say/none nur antworten
 const { spawn } = require("node:child_process");
+const { mediaSessionScript, browserScript } = require("./winscripts");
 const path = require("node:path");
 
 /** Virtuelle Tasten für Lautstärke und Musik */
@@ -63,6 +64,23 @@ function createActions(env = {}) {
     }
     return null;
   };
+  /** PowerShell-Skript ausführen und JSON-Ausgabe lesen (Skript als -EncodedCommand: keine Probleme mit Anführungszeichen) */
+  const powershellJson = (script) => new Promise((resolve, reject) => {
+    if (env.powershellJson) return env.powershellJson(script).then(resolve, reject);
+    const enc = Buffer.from(script, "utf16le").toString("base64");
+    const child = sp("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc], { windowsHide: true });
+    let out = "";
+    child.stdout?.on("data", (d) => (out += d));
+    child.on?.("error", reject);
+    child.on?.("exit", () => {
+      const line = out.split(/\r?\n/).reverse().find((l) => l.trim().startsWith("{"));
+      try {
+        resolve(line ? JSON.parse(line) : { ok: false, error: "keine Antwort" });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
   const isUri = (t) => /^[a-z][a-z0-9+.-]*:/i.test(t) && !/^[a-z]:[\\/]/i.test(t); // https:, ms-settings:, mailto: – aber nicht C:\
 
   const actions = {
@@ -101,6 +119,14 @@ function createActions(env = {}) {
     async shell({ command }) {
       if (!command) throw new Error("shell: command fehlt");
       return powershell(command);
+    },
+    /** Musik über die Windows-Mediensteuerung: command next|previous|play|pause|toggle|stop|info, app z. B. "amazon" */
+    async mediaSession({ command = "toggle", app = "" }) {
+      return powershellJson(mediaSessionScript(command, app));
+    },
+    /** Browser-Tabs: op close|new|next|previous|reopen|closeMatching|list, match = Text im Tab-Namen */
+    async browser({ op = "close", match = "", all = false }) {
+      return powershellJson(browserScript(op, match, all));
     },
     async sequence({ steps = [] }, run) {
       for (const s of steps) {

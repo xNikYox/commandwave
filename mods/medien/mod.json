@@ -1,9 +1,9 @@
 {
   "id": "medien",
-  "name": "Lautstärke & Musik",
-  "version": "1.0.0",
+  "name": "Lautstärke",
+  "version": "1.1.0",
   "author": "CommandWave",
-  "description": "„Lauter“, „Leiser“, „Ton aus“, „Pause“, „Nächstes Lied“ – funktioniert mit Spotify, YouTube im Browser und den meisten Playern.",
+  "description": "„Lauter“, „Leiser“, „Ton aus“. Lieder überspringen, Pause und „Was läuft gerade?“ macht jetzt die Mod „Musik steuern“.",
   "commands": [
     {
       "phrases": [
@@ -38,38 +38,6 @@
       "action": {
         "type": "media",
         "key": "mute"
-      }
-    },
-    {
-      "phrases": [
-        "(pause|weiter|play|abspielen)",
-        "musik (pausieren|fortsetzen|anhalten)"
-      ],
-      "say": "",
-      "action": {
-        "type": "media",
-        "key": "play_pause"
-      }
-    },
-    {
-      "phrases": [
-        "nächstes (lied|video)",
-        "überspringen"
-      ],
-      "say": "",
-      "action": {
-        "type": "media",
-        "key": "next"
-      }
-    },
-    {
-      "phrases": [
-        "(vorheriges|letztes) (lied|video)"
-      ],
-      "say": "",
-      "action": {
-        "type": "media",
-        "key": "previous"
       }
     }
   ]
