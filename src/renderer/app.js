@@ -1,5 +1,5 @@
 // CommandWave – Fenster: Zuhören, Antwort sprechen, Befehle, Mods & Updates, Einstellungen.
-const cw = window.cw;
+// „cw“ stellt preload.js global bereit (contextBridge) – nicht neu deklarieren, sonst bricht das Skript ab
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
