@@ -21,6 +21,7 @@ child.on("exit", (code) => {
   console.log(res ? JSON.stringify(JSON.parse(res.slice(res.indexOf("FULLTEST ") + 9)), null, 2) : "keine FULLTEST-Ausgabe (Code " + code + ")");
   const r = res ? JSON.parse(res.slice(res.indexOf("FULLTEST ") + 9)) : null;
   if (r && r.windowTest !== "Fenster neu geöffnet") errors.push("Fenster-Test: " + r.windowTest);
+  for (const [acc, res] of Object.entries(r?.hotkeys || {})) if (res !== "ok") errors.push(`Tastenkombination ${acc}: ${res}`);
   if (errors.length || !res) {
     console.log("--- Fehler / Protokoll ---\n" + (errors.length ? errors.join("\n") : lines.slice(-60).join("\n")));
     process.exit(1);

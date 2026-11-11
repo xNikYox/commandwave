@@ -13,8 +13,7 @@ function setStatus(text, mode = "") {
   $("#status").textContent = text;
   document.body.dataset.mode = mode; // "" | listening | thinking | speaking | error
 }
-const pretty = (k) => String(k || "").replace("Control", "Strg").replace("Space", "Leertaste").replace(/\+/g, " + ");
-const idle = () => setStatus(`Bereit – ${pretty(state?.settings.hotkey) || "Knopf"} drücken und sprechen`, "");
+const idle = () => setStatus(state?.settings.hotkey ? `Bereit – ${keyLabel()} drücken und sprechen` : "Bereit – Mikrofon anklicken und sprechen", "");
 
 /* ---------------- Zuhören → verstehen → antworten ---------------- */
 async function listen() {
@@ -207,7 +206,7 @@ async function renderSettings() {
     if (el.type === "checkbox") el.checked = !!s[k];
     else el.value = String(s[k]);
   }
-  $("#hotkey").value = pretty(s.hotkey);
+  $("#hotkey").value = keyLabel();
   $("#hotkeyError").hidden = !state.hotkeyError;
   $("#hotkeyError").textContent = state.hotkeyError || "";
   $("#about").textContent = `CommandWave ${state.version} · Mods: ${state.modsDir} · alles läuft offline auf diesem PC`;
@@ -231,29 +230,42 @@ $("#voice").onchange = async (e) => (state.settings = (await cw.saveSettings({ v
 $("#mic-select").onchange = async (e) => (state.settings = (await cw.saveSettings({ micId: e.target.value })).settings);
 $("#testVoice").onclick = () => say("Hallo, ich bin CommandWave. Editor wird gestartet.");
 
-// Tastenkombination aufnehmen: Feld anklicken, Kombination drücken (Entf = keine)
-const KEYS = { Control: "Strg", Alt: "Alt", Shift: "Umschalt", Super: "Win" };
-$("#hotkey").addEventListener("focus", (e) => (e.target.value = "Tasten drücken …"));
-$("#hotkey").addEventListener("blur", (e) => (e.target.value = pretty(state.settings.hotkey)));
-$("#hotkey").addEventListener("keydown", async (e) => {
+// Tastenkombination aufnehmen: Feld anklicken, Kombination drücken (Entf/Rücktaste = keine, Esc = abbrechen).
+// Während der Aufnahme sind die globalen Tastenkombinationen aus – sonst fängt Windows die alte Kombination ab.
+const hk = $("#hotkey");
+hk.addEventListener("focus", () => {
+  hk.value = "Tasten drücken …";
+  cw.pauseHotkeys();
+});
+hk.addEventListener("blur", () => {
+  hk.value = keyLabel();
+  cw.resumeHotkeys();
+});
+hk.addEventListener("keyup", (e) => {
+  if (document.activeElement === hk && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && hk.value.endsWith("…")) hk.value = "Tasten drücken …";
+});
+hk.addEventListener("keydown", async (e) => {
   e.preventDefault();
-  if (e.key === "Escape") return e.target.blur();
-  let key = null;
-  if (e.key === "Backspace" || e.key === "Delete") key = "";
+  e.stopPropagation();
+  if (e.key === "Escape") return hk.blur();
+  let r;
+  if ((e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.altKey && !e.metaKey) r = { acc: "", label: "" };
   else {
-    const k = e.code === "Space" ? "Space" : /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit\d$/.test(e.code) ? e.code.slice(5) : /^F\d{1,2}$/.test(e.code) ? e.code : null;
-    const mods = [e.ctrlKey && "Control", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Super"].filter(Boolean);
-    if (!k || (!mods.length && !/^F\d/.test(k))) return;
-    key = [...mods, k].join("+");
+    r = Hotkey.fromEvent(e);
+    if (!r) return;
+    if (r.partial) return (hk.value = r.partial); // nur Strg/Alt/Umschalt gedrückt: weiter warten
   }
-  const r = await cw.saveSettings({ hotkey: key });
-  state.settings = r.settings;
-  state.hotkeyError = r.hotkeyError;
-  e.target.blur();
+  const res = await cw.saveSettings({ hotkey: r.acc, hotkeyLabel: r.label });
+  state.settings = res.settings;
+  state.hotkeyError = res.hotkeyError;
+  // eine Ziffernblock-Taste allein ist global belegt – darauf hinweisen
+  if (!res.hotkeyError && /^num/.test(r.acc)) state.hotkeyError = `Hinweis: ${r.label} tippt in anderen Programmen dann nichts mehr. Besser z. B. Strg + ${r.label}. (Num-Lock muss an sein.)`;
+  else if (!res.hotkeyError && /num/.test(r.acc)) state.hotkeyError = "Hinweis: Für Ziffernblock-Tasten muss Num-Lock an sein.";
+  hk.blur();
   renderSettings();
   idle();
 });
-void KEYS;
+const keyLabel = () => (state.settings.hotkey ? state.settings.hotkeyLabel || Hotkey.pretty(state.settings.hotkey) : "keine");
 
 // Update-Quellen
 function renderSources() {

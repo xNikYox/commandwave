@@ -48,6 +48,7 @@ const OFFICIAL = { type: "github", repo: "xNikYox/commandwave-mods", branch: "ma
 
 const DEFAULTS = {
   hotkey: "Control+Space",
+  hotkeyLabel: "Strg + Leertaste", // Anzeige so, wie die Taste auf der Tastatur heißt (z. B. „Strg + #“)
   voice: "", // leer = erste deutsche Stimme
   rate: 1,
   volume: 1,
@@ -271,7 +272,7 @@ function buildTray() {
   ]));
 }
 
-const prettyKey = (k) => String(k || "").replace("Control", "Strg").replace("Space", "Leertaste").replace(/\+/g, " + ");
+const prettyKey = (k) => (k === settings.hotkey && settings.hotkeyLabel ? settings.hotkeyLabel : String(k || "").replace("Control", "Strg").replace("Space", "Leertaste").replace(/\+/g, " + "));
 
 /**
  * Gedrückt gehaltene Tasten wiederholt Windows ständig – das würde das Zuhören sofort wieder beenden.
@@ -316,14 +317,22 @@ function listen() {
   send("listen");
 }
 
-function registerHotkey() {
+/** Tastenkombination bei Windows anmelden → Fehlertext oder null */
+function tryRegister(acc) {
   globalShortcut.unregisterAll();
-  if (!settings.hotkey) return null;
+  if (!acc) return null;
   try {
-    return globalShortcut.register(settings.hotkey, hotkeyPressed) ? null : `Die Tastenkombination ${prettyKey(settings.hotkey)} ist schon von einem anderen Programm belegt.`;
+    return globalShortcut.register(acc, hotkeyPressed) ? null : "belegt";
   } catch {
-    return `Ungültige Tastenkombination: ${settings.hotkey}`;
+    return "ungültig";
   }
+}
+
+function registerHotkey() {
+  const err = tryRegister(settings.hotkey);
+  if (err === "belegt") return `Die Tastenkombination ${prettyKey(settings.hotkey)} ist schon von einem anderen Programm belegt.`;
+  if (err) return `Ungültige Tastenkombination: ${settings.hotkey}`;
+  return null;
 }
 
 /* ---------------- IPC (Fenster ↔ Hauptprozess) ---------------- */
@@ -337,8 +346,20 @@ ipcMain.handle("command", (_e, text) => assistant.handle(String(text || "")));
 ipcMain.handle("settings:save", (_e, patch) => {
   const allowed = Object.keys(DEFAULTS);
   const p = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => allowed.includes(k)));
+  // neue Tastenkombination erst übernehmen, wenn Windows sie annimmt – sonst bleibt die alte
+  if ("hotkey" in p) {
+    const err = tryRegister(p.hotkey);
+    if (err) {
+      const label = p.hotkeyLabel || p.hotkey;
+      delete p.hotkey;
+      delete p.hotkeyLabel;
+      saveSettings(p);
+      registerHotkey();
+      return { settings, hotkeyError: err === "belegt" ? `${label} ist schon von einem anderen Programm belegt – bitte eine andere Kombination wählen.` : `${label} geht als Tastenkombination nicht.` };
+    }
+    hotkeyError = null;
+  }
   saveSettings(p);
-  if ("hotkey" in p) hotkeyError = registerHotkey();
   if ("autostart" in p && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, args: ["--hidden"] });
   if ("disabled" in p) reloadMods();
   if (tray && "hotkey" in p) buildTray();
@@ -356,6 +377,9 @@ ipcMain.handle("mods:install", async (_e, id) => {
   }
 });
 ipcMain.handle("window:hide", () => alive() && win.hide());
+// beim Aufnehmen einer neuen Tastenkombination die globalen kurz abschalten
+ipcMain.handle("hotkey:pause", () => globalShortcut.unregisterAll());
+ipcMain.handle("hotkey:resume", () => (hotkeyError = registerHotkey()));
 ipcMain.handle("app:update", () => appUpdate);
 ipcMain.handle("app:checkUpdate", () => (autoUpdater ? autoUpdater.checkForUpdates().then(() => appUpdate).catch((e) => ({ ...appUpdate, status: "error", error: e.message })) : { status: "dev" }));
 ipcMain.handle("app:installUpdate", () => {
@@ -400,9 +424,15 @@ app.whenReady().then(async () => {
         windowTest = "Fehler: " + e.message;
       }
     }, 25000);
+    // Tastenkombinationen, die man jetzt einstellen kann, müssen sich bei Windows anmelden lassen
+    const hotkeys = {};
+    setTimeout(() => {
+      for (const acc of ["Control+/", "Control+num1", "num5", "Control+Alt+numadd", "F9", "Control+Shift+Space", "Control+-", "Control+."]) hotkeys[acc] = tryRegister(acc) || "ok";
+      registerHotkey();
+    }, 30000);
     // Test des normalen Starts (Tray, App-Updater, Mod-Updates, App-Suche): 45 s laufen lassen, Stand ausgeben, beenden
     setTimeout(() => {
-      console.log("FULLTEST " + JSON.stringify({ windowTest, mods: assistant.mods.map((m) => m.id + "@" + m.version), foundApps, updates: { errors: updates.errors, installed: updates.installed }, appUpdate, tray: !!tray, grammar: assistant.grammar.length }));
+      console.log("FULLTEST " + JSON.stringify({ windowTest, hotkeys, mods: assistant.mods.map((m) => m.id + "@" + m.version), foundApps, updates: { errors: updates.errors, installed: updates.installed }, appUpdate, tray: !!tray, grammar: assistant.grammar.length }));
       quitting = true;
       app.exit(0);
     }, 45000);

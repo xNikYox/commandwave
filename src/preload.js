@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("cw", {
   checkUpdates: () => ipcRenderer.invoke("mods:check"),
   installMod: (id) => ipcRenderer.invoke("mods:install", id),
   hide: () => ipcRenderer.invoke("window:hide"),
+  pauseHotkeys: () => ipcRenderer.invoke("hotkey:pause"),
+  resumeHotkeys: () => ipcRenderer.invoke("hotkey:resume"),
   smoke: (data) => ipcRenderer.invoke("smoke", data),
   appUpdate: () => ipcRenderer.invoke("app:update"),
   checkAppUpdate: () => ipcRenderer.invoke("app:checkUpdate"),
