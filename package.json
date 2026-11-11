@@ -11,9 +11,10 @@
     "test": "node --test test/*.test.js",
     "model": "node scripts/get-model.js",
     "index": "node scripts/build-index.js",
-    "dist:win": "electron-builder --win portable zip --x64 --publish never"
+    "dist:win": "electron-builder --win nsis zip --x64 --publish never"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "vosk-browser": "^0.0.8"
   },
   "devDependencies": {
@@ -23,18 +24,50 @@
   "build": {
     "appId": "de.xnikyox.commandwave",
     "productName": "CommandWave",
-    "directories": { "output": "dist" },
-    "files": ["src/**/*", "build/icon.png", "build/tray*.png", "package.json", "node_modules/vosk-browser/dist/**/*"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "build/tray*.png",
+      "package.json",
+      "node_modules/vosk-browser/dist/**/*"
+    ],
     "extraResources": [
-      { "from": "mods", "to": "mods-default" },
-      { "from": "models", "to": "models" }
+      {
+        "from": "mods",
+        "to": "mods-default"
+      },
+      {
+        "from": "models",
+        "to": "models"
+      }
     ],
     "win": {
-      "target": ["portable", "zip"],
+      "target": [
+        "nsis",
+        "zip"
+      ],
       "icon": "build/icon.png",
-      "signAndEditExecutable": false,
-      "artifactName": "CommandWave-${version}-win.${ext}"
+      "artifactName": "CommandWave-Setup-${version}.${ext}"
     },
-    "portable": { "artifactName": "CommandWave-${version}.exe" }
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CommandWave",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "xNikYox",
+        "repo": "commandwave",
+        "releaseType": "release"
+      }
+    ]
   }
 }

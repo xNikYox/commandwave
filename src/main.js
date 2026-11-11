@@ -24,6 +24,10 @@ const DATA = app.getPath("userData");
 const MODS_DIR = path.join(DATA, "mods");
 const DEFAULT_MODS = path.join(RES, app.isPackaged ? "mods-default" : "mods");
 const SETTINGS_FILE = path.join(DATA, "einstellungen.json");
+// Testmodus (GitHub Actions): Fenster unsichtbar laden, Erkennung prüfen, Ergebnis ausgeben, beenden
+const SMOKE = process.argv.includes("--smoke");
+/** Offizielle Mod-Quelle: hier liegen die mitgelieferten Mods und neue Mods von CommandWave */
+const OFFICIAL = { type: "github", repo: "xNikYox/commandwave-mods", branch: "main", dir: "" };
 
 const DEFAULTS = {
   hotkey: "Control+Space",
@@ -38,8 +42,10 @@ const DEFAULTS = {
   startHidden: false,
   closeToTray: true,
   checkOnStart: true,
-  autoUpdate: true, // installierte Mods automatisch aktualisieren (neue Mods nur nach Bestätigung)
-  sources: [], // Mod-Quellen (siehe core/updater.js)
+  autoUpdate: true, // Mods automatisch aktualisieren; neue Mods aus vertrauenswürdigen Quellen auch automatisch installieren
+  appAutoUpdate: true, // CommandWave selbst automatisch aktualisieren (GitHub-Releases)
+  sources: [OFFICIAL], // Mod-Quellen (siehe core/updater.js)
+  trusted: [updater.sourceId(OFFICIAL)], // aus diesen Quellen kommen auch neue Mods ohne Nachfrage
   disabled: [], // abgeschaltete Mods
 };
 
@@ -53,7 +59,9 @@ const log = (...a) => console.log("[CommandWave]", ...a);
 /* ---------------- Einstellungen ---------------- */
 function loadSettings() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) };
+    const s = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) };
+    if (!Array.isArray(s.trusted)) s.trusted = [...DEFAULTS.trusted];
+    return s;
   } catch {
     return { ...DEFAULTS };
   }
@@ -74,7 +82,7 @@ const assistant = new Assistant({
   dataDir: DATA,
   actions,
   say: (text) => send("speak", text),
-  notify: (title, body) => Notification.isSupported() && new Notification({ title, body, icon: asset("icon.png") }).show(),
+  notify: (title, body) => notify(title, body),
   log,
   disabled: settings.disabled,
 });
@@ -107,9 +115,17 @@ async function checkUpdates({ install = settings.autoUpdate } = {}) {
     updates.list = r.updates;
     updates.errors = r.errors;
     updates.checkedAt = Date.now();
-    // bereits installierte Mods automatisch aktualisieren; neue Mods warten auf „Installieren“
+    // installierte Mods automatisch aktualisieren; neue Mods nur aus vertrauenswürdigen Quellen, sonst „Installieren“
     if (install) {
-      for (const u of r.updates.filter((x) => !x.isNew)) await installUpdate(u.id, false);
+      const trusted = new Set(settings.trusted || []);
+      for (const u of r.updates.filter((x) => !x.isNew || trusted.has(updater.sourceId(x.source)))) {
+        try {
+          await installUpdate(u.id, false);
+          if (u.isNew) notify("Neue Mod installiert", `${u.name} ${u.to}`);
+        } catch (e) {
+          updates.errors.push({ source: u.sourceLabel, error: `${u.id}: ${e.message}` });
+        }
+      }
     }
   } catch (e) {
     updates.errors = [{ source: "Updater", error: e.message }];
@@ -129,6 +145,36 @@ async function installUpdate(id, reload = true) {
   log("Mod installiert:", id, r.version);
   if (reload) reloadMods();
   return r;
+}
+
+function notify(title, body) {
+  if (Notification.isSupported()) new Notification({ title, body, icon: asset("icon.png") }).show();
+}
+
+/* ---------------- App-Updates (GitHub-Releases, electron-updater) ---------------- */
+const appUpdate = { status: "idle", version: null, percent: 0, error: null };
+let autoUpdater = null;
+function setupAppUpdates() {
+  if (!app.isPackaged || SMOKE) return;
+  ({ autoUpdater } = require("electron-updater"));
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  const set = (p) => {
+    Object.assign(appUpdate, p);
+    send("appUpdate", appUpdate);
+  };
+  autoUpdater.on("checking-for-update", () => set({ status: "checking", error: null }));
+  autoUpdater.on("update-available", (i) => set({ status: "downloading", version: i.version, percent: 0 }));
+  autoUpdater.on("update-not-available", () => set({ status: "current" }));
+  autoUpdater.on("download-progress", (p) => set({ status: "downloading", percent: Math.round(p.percent) }));
+  autoUpdater.on("update-downloaded", (i) => {
+    set({ status: "ready", version: i.version });
+    notify("CommandWave-Update bereit", `Version ${i.version} wird beim Beenden installiert.`);
+  });
+  autoUpdater.on("error", (e) => set({ status: "error", error: String(e?.message || e).slice(0, 200) }));
+  const check = () => settings.appAutoUpdate && autoUpdater.checkForUpdates().catch(() => {});
+  setTimeout(check, 10000);
+  setInterval(check, 4 * 3600 * 1000);
 }
 
 /* ---------------- Fenster & Tray ---------------- */
@@ -185,6 +231,7 @@ function buildTray() {
     { label: "Mods neu laden", click: reloadMods },
     { label: "Nach Mod-Updates suchen", click: () => checkUpdates() },
     { label: "Mods-Ordner öffnen", click: () => shell.openPath(MODS_DIR) },
+    ...(appUpdate.status === "ready" ? [{ label: `Update ${appUpdate.version} jetzt installieren`, click: () => autoUpdater.quitAndInstall(true, true) }] : []),
     { type: "separator" },
     { label: "Beenden", click: () => app.quit() },
   ]));
@@ -210,7 +257,12 @@ function registerHotkey() {
 }
 
 /* ---------------- IPC (Fenster ↔ Hauptprozess) ---------------- */
-ipcMain.handle("state", () => ({ settings, version: app.getVersion(), modsDir: MODS_DIR, hotkeyError: hotkeyError, ...modsState() }));
+ipcMain.handle("state", () => ({ settings, version: app.getVersion(), modsDir: MODS_DIR, hotkeyError: hotkeyError, smoke: SMOKE, ...modsState() }));
+ipcMain.handle("smoke", (_e, data) => {
+  if (!SMOKE) return;
+  console.log("SMOKE " + JSON.stringify(data));
+  setTimeout(() => app.exit(data && data.ok ? 0 : 1), 200);
+});
 ipcMain.handle("command", (_e, text) => assistant.handle(String(text || "")));
 ipcMain.handle("settings:save", (_e, patch) => {
   const allowed = Object.keys(DEFAULTS);
@@ -234,6 +286,14 @@ ipcMain.handle("mods:install", async (_e, id) => {
   }
 });
 ipcMain.handle("window:hide", () => win?.hide());
+ipcMain.handle("app:update", () => appUpdate);
+ipcMain.handle("app:checkUpdate", () => (autoUpdater ? autoUpdater.checkForUpdates().then(() => appUpdate).catch((e) => ({ ...appUpdate, status: "error", error: e.message })) : { status: "dev" }));
+ipcMain.handle("app:installUpdate", () => {
+  if (autoUpdater && appUpdate.status === "ready") {
+    quitting = true;
+    autoUpdater.quitAndInstall(true, true);
+  }
+});
 
 let hotkeyError = null;
 
@@ -258,13 +318,21 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === "media" && wc.getURL().startsWith("cw://app/")));
   session.defaultSession.setPermissionCheckHandler((wc, perm) => perm === "media" && !!wc && wc.getURL().startsWith("cw://app/"));
 
+  if (SMOKE) {
+    setTimeout(() => {
+      console.log("SMOKE " + JSON.stringify({ ok: false, error: "Zeitüberschreitung" }));
+      app.exit(2);
+    }, 120000);
+  }
   const copied = seedDefaults(DEFAULT_MODS, MODS_DIR);
   if (copied.length) log("Mitgelieferte Mods eingerichtet:", copied.join(", "));
   assistant.reload(settings.disabled);
   hotkeyError = registerHotkey();
-  buildTray();
-  createWindow(!(process.argv.includes("--hidden") || settings.startHidden));
-  if (settings.checkOnStart && settings.sources.length) setTimeout(() => checkUpdates(), 4000);
+  if (!SMOKE) buildTray();
+  createWindow(!(SMOKE || process.argv.includes("--hidden") || settings.startHidden));
+  if (!SMOKE && settings.checkOnStart && settings.sources.length) setTimeout(() => checkUpdates(), 4000);
+  if (!SMOKE) setInterval(() => settings.sources.length && checkUpdates(), 6 * 3600 * 1000); // Mods alle 6 Stunden
+  setupAppUpdates();
 });
 
 app.on("window-all-closed", () => {

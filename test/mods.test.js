@@ -28,6 +28,7 @@ function fakeEnv(notFound = []) {
       },
       openExternal: async (u) => calls.push("öffne " + u),
       openPath: async (p) => (calls.push("pfad " + p), ""),
+      appPath: async (name) => (name === "winword" ? "C:\\Office\\WINWORD.EXE" : null),
     },
   };
 }
@@ -61,7 +62,7 @@ test("Aktionen der mitgelieferten Mods", async () => {
   a.reload();
   const cases = [
     ["schließe paint", "Paint wird geschlossen", "taskkill.exe /IM mspaint.exe"],
-    ["öffne word", "Word wird gestartet", 'winword; cmd.exe /d /s /c start "" winword'],
+    ["öffne word", "Word wird gestartet", "winword; C:\\Office\\WINWORD.EXE"],
     ["öffne youtube", "Ich öffne YouTube.", "öffne https://www.youtube.com"],
     ["öffne die bluetooth einstellungen", "Ich öffne die Einstellungen für Bluetooth.", "öffne ms-settings:bluetooth"],
     ["öffne die einstellungen", "Einstellungen wird gestartet", "öffne ms-settings:"],
@@ -72,6 +73,8 @@ test("Aktionen der mitgelieferten Mods", async () => {
     assert.equal(r.say, say, t);
     assert.equal(f.calls.splice(0).join("; "), call, t);
   }
+  const missing = createActions({ ...fakeEnv(["gibtsnicht"]).env, appPath: async () => null });
+  await assert.rejects(missing.run({ target: "gibtsnicht" }), /wurde nicht gefunden/);
   const loud = await a.handle("mach lauter");
   assert.equal(loud.ok, true);
   assert.match(f.calls.splice(0)[0], /^powershell\.exe .*keybd_event\(175/);

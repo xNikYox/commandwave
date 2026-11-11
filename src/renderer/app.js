@@ -281,12 +281,32 @@ $("#addSource").addEventListener("submit", async (e) => {
   renderSources();
 });
 
+/* ---------------- App-Updates ---------------- */
+function renderAppUpdate(u) {
+  const t = {
+    idle: "Updates kommen automatisch.", dev: "Im Entwicklungsmodus keine Updates.", checking: "Suche nach Updates …", current: "Du hast die neueste Version.",
+    downloading: `Lade Version ${u.version || ""} … ${u.percent || 0} %`, ready: `Version ${u.version} ist bereit – wird beim Beenden installiert.`, error: "Update-Prüfung fehlgeschlagen: " + (u.error || ""),
+  };
+  $("#appUpdateText").textContent = `Version ${state.version} · ` + (t[u.status] || t.idle);
+  const b = $("#appUpdateBtn");
+  b.textContent = u.status === "ready" ? "Jetzt neu starten" : "Nach Updates suchen";
+  b.disabled = u.status === "checking" || u.status === "downloading";
+}
+$("#appUpdateBtn").onclick = async () => {
+  const u = await cw.appUpdate();
+  if (u.status === "ready") return cw.installAppUpdate();
+  renderAppUpdate({ status: "checking" });
+  renderAppUpdate(await cw.checkAppUpdate());
+};
+cw.onAppUpdate(renderAppUpdate);
+
 /* ---------------- Start ---------------- */
 (async () => {
   state = await cw.state();
   renderCommands();
   renderMods();
   renderSettings();
+  cw.appUpdate().then(renderAppUpdate);
   try {
     await speech.load(new URL("model/vosk-model-de.tar.gz", location.href).href); // im Worker braucht Vosk eine volle Adresse
     speech.setGrammar(state.grammar);
@@ -296,4 +316,34 @@ $("#addSource").addEventListener("submit", async (e) => {
   } catch (e) {
     setStatus("Spracherkennung konnte nicht geladen werden: " + e.message, "error");
   }
+  if (state.smoke) smokeTest();
 })();
+
+/** Testmodus: Modell geladen? Erkenner verarbeitet Ton? Befehle laufen? Stimmen da? → an den Hauptprozess */
+async function smokeTest() {
+  const out = { ok: false, ready, status: $("#status").textContent, commands: state.commands.length, grammar: state.grammar.length, mods: state.mods.length };
+  try {
+    if (ready) {
+      // 1,5 s fast-Stille einspeisen: der Erkenner muss ein (leeres) Endergebnis liefern
+      out.recognizer = await new Promise((resolve) => {
+        const ctx = new OfflineAudioContext(1, 24000, 16000);
+        const buf = ctx.createBuffer(1, 24000, 16000);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() - 0.5) * 0.002;
+        speech.session = { onResult: (m) => resolve({ text: m.result?.text ?? null }), onPart() {} };
+        speech.rec.acceptWaveform(buf);
+        speech.rec.retrieveFinalResult();
+        setTimeout(() => resolve({ text: null, timeout: true }), 15000);
+      });
+      speech.session = null;
+    }
+    out.time = await cw.command("wie spät ist es");
+    out.unknown = await cw.command("erzähl mir einen witz");
+    const voices = await speech.voicesReady();
+    out.voices = voices.map((v) => `${v.name} (${v.lang})`);
+    out.ok = ready && out.recognizer && !out.recognizer.timeout && out.time.ok && /Uhr/.test(out.time.say) && out.unknown.say === "Diesen Befehl kenne ich leider nicht.";
+  } catch (e) {
+    out.error = e.message;
+  }
+  cw.smoke(out);
+}

@@ -35,6 +35,33 @@ function createActions(env = {}) {
     child.on("error", reject);
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error("PowerShell beendet mit Code " + code))));
   });
+  /** Programm losgelöst starten → Promise (Fehler z. B. ENOENT) */
+  const launch = (file, list) => new Promise((resolve, reject) => {
+    const child = sp(file, list, { windowsHide: true, detached: true, stdio: "ignore" });
+    let done = false;
+    child.on?.("error", (e) => !done && ((done = true), reject(e)));
+    child.on?.("spawn", () => !done && ((done = true), resolve()));
+    child.unref?.();
+    if (!child.on) resolve();
+  });
+  /** Pfad aus HKCU/HKLM\…\App Paths\<name>.exe (dort tragen sich Word, Excel, Chrome & Co. ein) */
+  const appPath = async (name) => {
+    if (env.appPath) return env.appPath(name);
+    const exe = /\.exe$/i.test(name) ? name : name + ".exe";
+    if (/[\\/:]/.test(exe)) return null;
+    for (const hive of ["HKCU", "HKLM"]) {
+      const out = await new Promise((resolve) => {
+        let text = "";
+        const c = sp("reg.exe", ["query", `${hive}\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${exe}`, "/ve"], { windowsHide: true });
+        c.stdout?.on("data", (d) => (text += d));
+        c.on?.("error", () => resolve(""));
+        c.on?.("exit", (code) => resolve(code === 0 ? text : ""));
+      });
+      const m = /REG_(?:EXPAND_)?SZ\s+(.+)/.exec(out);
+      if (m) return m[1].trim().replace(/^"|"$/g, "").replace(/%([^%]+)%/g, (x, v) => process.env[v] ?? x);
+    }
+    return null;
+  };
   const isUri = (t) => /^[a-z][a-z0-9+.-]*:/i.test(t) && !/^[a-z]:[\\/]/i.test(t); // https:, ms-settings:, mailto: – aber nicht C:\
 
   const actions = {
@@ -42,26 +69,16 @@ function createActions(env = {}) {
       if (!target) throw new Error("run: target fehlt");
       if (isUri(target)) return actions.open({ target });
       const list = args.map(String);
-      // erst direkt starten (kein Konsolenfenster); findet Windows das Programm so nicht (z. B. „winword“ aus den
-      // App-Pfaden), über „start“ versuchen
-      await new Promise((resolve, reject) => {
-        const child = sp(target, list, { windowsHide: true, detached: true, stdio: "ignore" });
-        let done = false;
-        child.on?.("error", (e) => {
-          if (done) return;
-          done = true;
-          if (e.code !== "ENOENT" || platform !== "win32") return reject(e);
-          const viaStart = sp("cmd.exe", ["/d", "/s", "/c", "start", '""', target, ...list], { windowsHide: true, detached: true, stdio: "ignore" });
-          viaStart.on?.("error", reject);
-          viaStart.on?.("exit", (code) => (code === 0 ? resolve() : reject(new Error(`„${target}“ wurde nicht gefunden`))));
-          viaStart.unref?.();
-        });
-        child.on?.("spawn", () => {
-          if (!done) (done = true), resolve();
-        });
-        child.unref?.();
-        if (!child.on) resolve();
-      });
+      // erst direkt starten (kein Konsolenfenster); findet Windows das Programm so nicht (z. B. „winword“),
+      // in den „App-Pfaden“ der Registry nachsehen – kein „start“, das bei Fehlern ein Fenster aufmacht
+      try {
+        await launch(target, list);
+      } catch (e) {
+        if (e.code !== "ENOENT" || platform !== "win32") throw e;
+        const found = await appPath(target);
+        if (!found) throw new Error(`„${target}“ wurde nicht gefunden`);
+        await launch(found, list);
+      }
     },
     async open({ target }) {
       if (!target) throw new Error("open: target fehlt");

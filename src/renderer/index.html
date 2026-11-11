@@ -70,13 +70,18 @@
       <div class="card">
         <h3>Mod-Updates</h3>
         <label class="row"><span>Beim Start prüfen</span><input type="checkbox" class="switch" data-set="checkOnStart"></label>
-        <label class="row"><span>Installierte Mods automatisch aktualisieren</span><input type="checkbox" class="switch" data-set="autoUpdate"></label>
+        <label class="row"><span>Mods automatisch aktualisieren<small class="sub">Neue Mods aus vertrauenswürdigen Quellen (z. B. der offiziellen) kommen auch automatisch</small></span><input type="checkbox" class="switch" data-set="autoUpdate"></label>
         <div id="sources"></div>
         <form class="addsrc" id="addSource">
           <select id="srcType"><option value="github">GitHub</option><option value="folder">Ordner</option><option value="url">Adresse</option></select>
           <input id="srcValue" placeholder="name/repository" required>
           <button class="btn">Quelle hinzufügen</button>
         </form>
+      </div>
+      <div class="card">
+        <h3>App-Updates</h3>
+        <label class="row"><span>CommandWave automatisch aktualisieren<small class="sub">Lädt neue Versionen im Hintergrund, installiert beim Beenden</small></span><input type="checkbox" class="switch" data-set="appAutoUpdate"></label>
+        <div class="row"><span id="appUpdateText" class="muted small">–</span><button class="btn" id="appUpdateBtn">Nach Updates suchen</button></div>
       </div>
       <div class="card">
         <h3>Start</h3>
