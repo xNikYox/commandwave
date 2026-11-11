@@ -11,6 +11,21 @@ const updater = require("./core/updater");
 const { START_APPS_CMD, toSlots } = require("./core/apps");
 const { execFile } = require("node:child_process");
 
+/* Unerwartete Fehler: ins Protokoll (…\CommandWave\fehler.log) statt Absturz-Fenster; im Test auch ausgeben */
+const FULLTEST = process.argv.includes("--fulltest");
+function logCrash(kind, err) {
+  const text = `[${new Date().toISOString()}] ${kind}: ${err && err.stack ? err.stack : String(err)}\n`;
+  try {
+    fs.mkdirSync(app.getPath("userData"), { recursive: true });
+    fs.appendFileSync(path.join(app.getPath("userData"), "fehler.log"), text);
+  } catch {
+    // Protokoll nicht schreibbar
+  }
+  console.error("FEHLER " + text);
+}
+process.on("uncaughtException", (e) => logCrash("uncaughtException", e));
+process.on("unhandledRejection", (e) => logCrash("unhandledRejection", e));
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   return;
@@ -363,6 +378,14 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === "media" && wc.getURL().startsWith("cw://app/")));
   session.defaultSession.setPermissionCheckHandler((wc, perm) => perm === "media" && !!wc && wc.getURL().startsWith("cw://app/"));
 
+  if (FULLTEST) {
+    // Test des normalen Starts (Tray, App-Updater, Mod-Updates, App-Suche): 45 s laufen lassen, Stand ausgeben, beenden
+    setTimeout(() => {
+      console.log("FULLTEST " + JSON.stringify({ mods: assistant.mods.map((m) => m.id + "@" + m.version), foundApps, updates: { errors: updates.errors, installed: updates.installed }, appUpdate, tray: !!tray, grammar: assistant.grammar.length }));
+      quitting = true;
+      app.exit(0);
+    }, 45000);
+  }
   if (SMOKE) {
     setTimeout(() => {
       console.log("SMOKE " + JSON.stringify({ ok: false, error: "Zeitüberschreitung" }));

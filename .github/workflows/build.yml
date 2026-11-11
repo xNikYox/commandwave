@@ -35,6 +35,10 @@ jobs:
         env:
           CW_EXE: dist/win-unpacked/CommandWave.exe
         run: node test/electron-smoke.js
+      - name: Gebaute App – voller Start (Tray, Updater, Mod-Updates)
+        env:
+          CW_EXE: dist/win-unpacked/CommandWave.exe
+        run: node test/full-start.js
       - uses: actions/upload-artifact@v4
         with:
           name: CommandWave
