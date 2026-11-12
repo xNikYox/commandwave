@@ -1,0 +1,8 @@
+{
+  "id": "fenster",
+  "name": "Fenster",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "Fenster per Sprache: „Minimiere das Fenster“, „Fenster nach links“, „Zeige den Desktop“, „Wechsle zu Spotify“. English: „Minimize the window“, „Snap the window left“, „Switch to Spotify“.",
+  "main": "main.js"
+}

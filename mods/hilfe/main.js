@@ -19,6 +19,6 @@ module.exports = (api) => {
   });
   api.command(["wer bist du", "wie heißt du"], () => "Ich bin CommandWave, dein Sprachassistent. Ich laufe komplett auf deinem PC.");
   api.command(["what can you do", "help [me]", "what commands (are there|do you know)"], () =>
-    "I can open and close apps, control music and volume, open websites and folders, manage browser tabs, tell the time and set timers. All commands are listed in the window.", { lang: "en" });
+    "I can open and close apps, control music and volume, open websites and folders, manage browser tabs and windows, search the web, tell the time and set timers. All commands are listed in the window.", { lang: "en" });
   api.command(["who are you", "what is your name"], () => "I'm CommandWave, your voice assistant. I run completely on your PC.", { lang: "en" });
 };

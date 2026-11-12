@@ -101,3 +101,9 @@ body[data-mode="error"] .status { color: var(--bad); }
 .switch:checked::after { transform: translateX(16px); background: #fff; }
 .cmd small.slot b { color: var(--b); font-weight: 600; }
 .row small.sub { display: block; color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+
+/* Mikrofon-Test: Pegel */
+.meter { height: 8px; border-radius: 6px; background: rgba(255, 255, 255, .07); overflow: hidden; margin: 4px 0 10px; }
+.meter span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7c6cff, #22d3ee); transition: width .08s linear; }
+.alias { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, .06); font-size: 13px; }
+[hidden] { display: none !important; }

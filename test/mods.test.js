@@ -37,7 +37,7 @@ test("mitgelieferte Mods laden ohne Fehler", () => {
   const a = new Assistant({ modsDir: MODS, actions: createActions(fakeEnv().env), dataDir: tmp() });
   const s = a.reload();
   assert.deepEqual(s.errors, []);
-  assert.deepEqual(a.mods.map((m) => m.id), ["apps", "browser", "hilfe", "medien", "musik", "system", "uhrzeit", "webseiten"]);
+  assert.deepEqual(a.mods.map((m) => m.id), ["apps", "browser", "fenster", "hilfe", "medien", "musik", "suche", "system", "uhrzeit", "webseiten"]);
   assert.ok(a.mods.find((m) => m.id === "uhrzeit").script);
   assert.ok(s.commands >= 15);
 });
@@ -138,7 +138,7 @@ test("Prüfung von mod.json, Versionen, Standard-Mods kopieren", () => {
   assert.equal(compareVersions("1.0.0", "1.0.0-beta"), 1);
   assert.equal(compareVersions("1.0", "1.0.0"), 0);
   const dst = tmp();
-  assert.deepEqual(seedDefaults(MODS, dst).sort(), ["apps", "browser", "hilfe", "medien", "musik", "system", "uhrzeit", "webseiten"]);
+  assert.deepEqual(seedDefaults(MODS, dst).sort(), ["apps", "browser", "fenster", "hilfe", "medien", "musik", "suche", "system", "uhrzeit", "webseiten"]);
   assert.deepEqual(seedDefaults(MODS, dst), []); // schon da, gleiche Version → nichts überschreiben
   assert.equal(loadAll(dst, { actions: {} }).errors.length, 0);
 });

@@ -107,6 +107,39 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
       // schon zu
     }
   } else console.log("Edge nicht installiert – Tabs nicht geprüft");
+  // Fenster: Editor nach vorne holen, minimieren, wiederherstellen, maximieren, andocken
+  await actions.run({ target: "notepad.exe" });
+  await wait(2500);
+  let w = await actions.window({ op: "focus", match: "notepad|editor" });
+  console.log("Fenster nach vorne:", JSON.stringify(w));
+  assert.equal(w.ok, true, "Editor-Fenster nicht gefunden: " + w.error);
+  await wait(500);
+  w = await actions.window({ op: "minimize" });
+  console.log("Minimieren:", JSON.stringify(w));
+  assert.equal(w.ok, true, w.error);
+  if (w.name === "notepad") assert.equal(w.minimized, true, "Editor nicht minimiert");
+  w = await actions.window({ op: "focus", match: "notepad" });
+  await wait(500);
+  w = await actions.window({ op: "maximize" });
+  console.log("Maximieren:", JSON.stringify(w));
+  assert.equal(w.ok, true, w.error);
+  if (w.name === "notepad") assert.equal(w.maximized, true, "Editor nicht maximiert");
+  for (const op of ["restore", "left", "right"]) {
+    w = await actions.window({ op });
+    console.log(op + ":", JSON.stringify(w));
+    assert.equal(w.ok, true, op + ": " + w.error);
+  }
+  const wins = await actions.window({ op: "list" });
+  console.log("Offene Fenster:", JSON.stringify(wins).slice(0, 300));
+  assert.equal((await actions.window({ op: "focus", match: "gibt-es-nicht-cw" })).ok, false);
+  assert.equal((await actions.window({ op: "desktop" })).ok, true);
+  r = await a.handle("wechsle zu editor");
+  assert.equal(r.say, "Wechsle zu Editor.");
+  execFileSync("taskkill", ["/IM", "notepad.exe", "/F"]);
+  r = await a.handle("wechsle zu editor");
+  assert.equal(r.say, "Editor ist gerade nicht offen.");
+  console.log("Fenster steuern: ok");
+
   console.log("Windows-Praxistest bestanden.");
 })().catch((e) => {
   console.error(e);

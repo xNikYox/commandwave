@@ -48,7 +48,7 @@
 
     /** Sparmodus: alle Sprachmodelle aus dem Speicher werfen – beim nächsten Zuhören werden sie neu geladen */
     unload() {
-      if (this.session) return;
+      if (this.session || this.wakeActive) return; // Aktivierungswort braucht das Modell
       for (const l of Object.keys(this.models)) this.drop(l);
     }
 
@@ -77,12 +77,107 @@
       return !!this.session;
     }
 
+    /** Erkenner ohne Befehlsliste (freie Sprache, z. B. Suchbegriffe oder Aussprache lernen) – danach .remove() */
+    freeRecognizer(l) {
+      if (!this.models[l]) throw new Error("Sprachmodell " + l + " nicht geladen");
+      const rec = new this.models[l].KaldiRecognizer(SAMPLE_RATE);
+      rec.setWords(true);
+      rec.on("result", (m) => this.session?.onResult(l, m));
+      rec.on("partialresult", (m) => this.session?.onPart(l, m));
+      return rec;
+    }
+
+    /** Frei zuhören (nur eine Sprache) → Promise<{ lang, text, conf }> */
+    async listenFree(l, opts = {}) {
+      const rec = this.freeRecognizer(l);
+      try {
+        const [r] = await this.listen({ ...opts, recs: { [l]: rec } });
+        return r || { lang: l, text: "", conf: null };
+      } finally {
+        try {
+          rec.remove();
+        } catch {
+          // schon weg
+        }
+      }
+    }
+
+    /**
+     * Aktivierungswort: Mikrofon bleibt offen, ein winziger Erkenner kennt nur das Wort (alles andere ist „[unk]“).
+     * Erst wenn nach dem Wort eine kurze Pause kommt und es sicher erkannt wurde, wird onWake() aufgerufen.
+     */
+    async startWake({ lang = "de", phrase = "hey wave", deviceId = "", onWake = () => {}, minConf = 0.6 } = {}) {
+      this.stopWake();
+      if (!this.models[lang]) throw new Error("Sprachmodell " + lang + " nicht geladen");
+      const w = { stopped: false };
+      this.wake = w;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: deviceId ? { exact: deviceId } : undefined, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      if (w.stopped) return stream.getTracks().forEach((t) => t.stop());
+      const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+      await ctx.audioWorklet.addModule("audio-worklet.js");
+      const src = ctx.createMediaStreamSource(stream);
+      const node = new AudioWorkletNode(ctx, "cw-capture");
+      src.connect(node);
+      const rec = new this.models[lang].KaldiRecognizer(SAMPLE_RATE, JSON.stringify(Speech.wakeGrammar(phrase)));
+      rec.setWords(true);
+      rec.on("result", (m) => {
+        if (!w.stopped && Speech.isWake(m, phrase, minConf)) onWake();
+      });
+      node.port.onmessage = (e) => {
+        if (w.stopped || this.session) return; // während normalem Zuhören nicht doppelt rechnen
+        try {
+          rec.acceptWaveformFloat(e.data.data, SAMPLE_RATE);
+        } catch {
+          // Erkenner beendet
+        }
+      };
+      Object.assign(w, { stream, ctx, src, node, rec });
+    }
+
+    get wakeActive() {
+      return !!this.wake && !this.wake.stopped;
+    }
+
+    stopWake() {
+      const w = this.wake;
+      if (!w) return;
+      this.wake = null;
+      w.stopped = true;
+      try {
+        if (w.node) w.node.port.onmessage = null;
+        w.src?.disconnect();
+        w.node?.disconnect();
+        w.stream?.getTracks().forEach((t) => t.stop());
+        w.ctx?.close().catch(() => {});
+        w.rec?.remove();
+      } catch {
+        // schon beendet
+      }
+    }
+
+    /** Grammatik fürs Aktivierungswort */
+    static wakeGrammar(phrase) {
+      return [phrase, "[unk]"];
+    }
+
+    /** Ergebnis des Wort-Erkenners → war es das Aktivierungswort (sicher genug)? */
+    static isWake(m, phrase, minConf = 0.6) {
+      const words = (m.result?.result || []).filter((x) => x.word !== "[unk]");
+      const text = clean(m.result?.text);
+      if (!text.endsWith(phrase)) return false;
+      const conf = words.length ? words.reduce((a, x) => a + (x.conf ?? 1), 0) / words.length : 0;
+      return conf >= minConf;
+    }
+
     /**
      * Zuhören (alle geladenen Sprachen gleichzeitig mit demselben Ton), bis Stille folgt oder maxSeconds um sind.
      * → Promise<[{ lang, text, conf }]> (text leer = nichts verstanden; conf = Sicherheit 0..1)
      */
-    async listen({ deviceId = "", maxSeconds = 7, onPartial = () => {}, onStart = () => {} } = {}) {
-      const langs = this.langs;
+    async listen({ deviceId = "", maxSeconds = 7, onPartial = () => {}, onStart = () => {}, recs = null } = {}) {
+      const use = recs || this.recs; // eigene Erkenner (z. B. frei) statt der Befehls-Erkenner
+      const langs = Object.keys(use);
       if (!langs.length) throw new Error("Spracherkennung noch nicht bereit");
       if (this.session) return this.stop();
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -141,7 +236,7 @@
           this.level = Math.min(1, e.data.level * 6);
           for (const l of langs) {
             try {
-              this.recs[l]?.acceptWaveformFloat(e.data.data, SAMPLE_RATE);
+              use[l]?.acceptWaveformFloat(e.data.data, SAMPLE_RATE);
             } catch {
               // Erkenner wurde gerade ersetzt
             }
@@ -154,7 +249,7 @@
           stop: () => {
             if (!this.session || this.session.final) return;
             this.session.final = true;
-            for (const l of langs) if (!results[l]) this.recs[l]?.retrieveFinalResult();
+            for (const l of langs) if (!results[l]) use[l]?.retrieveFinalResult();
             if (langs.every((x) => results[x])) return finish();
             this.session.fallback = setTimeout(finish, 900); // falls kein Ergebnis mehr kommt
           },

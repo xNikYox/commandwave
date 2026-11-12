@@ -183,7 +183,7 @@ function match(text, compiled, slotValues = {}, threshold = 0.66) {
     for (const v of c.variants) {
       if (v.length > words.length + 4) continue;
       const r = matchSeq(v, words, slotValues);
-      if (r && (!best || r.score > best.score)) best = { command: c, score: r.score, slots: r.slots };
+      if (r && (!best || r.score > best.score)) best = { command: c, score: r.score, slots: r.slots, variant: v };
     }
   }
   return best && best.score >= threshold ? best : null;
@@ -209,6 +209,23 @@ function grammar(compiled, slotValues = {}, limit = 6000) {
     }
   }
   return [...out, "[unk]"];
+}
+
+/** Ja/Nein-Antworten (für Rückfragen) */
+const YES = { de: ["ja", "ja bitte", "genau", "richtig", "jawohl", "ja genau"], en: ["yes", "yes please", "yeah", "yep", "correct", "right"] };
+const NO = { de: ["nein", "nein danke", "falsch", "abbrechen"], en: ["no", "nope", "no thanks", "cancel", "wrong"] };
+/** Antwort → true (ja), false (nein) oder null (weder noch) */
+function yesNo(text) {
+  const w = normalize(text).split(" ");
+  if (w.some((x) => ["nein", "no", "nope", "falsch", "abbrechen", "cancel", "wrong"].includes(x))) return false;
+  if (w.some((x) => ["ja", "jawohl", "genau", "richtig", "yes", "yeah", "yep", "correct", "right"].includes(x))) return true;
+  return null;
+}
+
+/** Gefundene Variante als sprechbarer Satz („öffne die app editor“) – für „Meintest du …?“ */
+function sayable(m) {
+  if (!m || !m.variant) return "";
+  return m.variant.map((p) => (p.t === "w" ? p.v : m.slots[p.v]?.key || p.v)).join(" ");
 }
 
 /**
@@ -238,6 +255,8 @@ function compactGrammar(compiled, slotValues = {}, perSlot = 2, lang = "") {
   const used = new Set(compiled.flatMap((c) => c.variants.flatMap((v) => v.filter((p) => p.t === "slot").map((p) => p.v))));
   for (const name of used) for (const key of keysOf(name)) out.add(normalize(key));
   out.add(lang === "en" ? "please" : "bitte");
+  // Antworten auf „Meintest du …?“
+  for (const w of lang === "en" ? YES.en.concat(NO.en) : YES.de.concat(NO.de)) out.add(w);
   return [...out, "[unk]"];
 }
 
@@ -279,4 +298,4 @@ function fill(template, slots = {}, extra = {}, lang = "de") {
 
 const capitalize = (s) => String(s).replace(/^\p{L}/u, (c) => c.toUpperCase());
 
-module.exports = { normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };
+module.exports = { YES, NO, yesNo, sayable, normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };

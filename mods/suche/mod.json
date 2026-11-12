@@ -1,0 +1,21 @@
+{
+  "id": "suche",
+  "name": "Suche",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "Im Internet suchen: „Suche auf YouTube“ – CommandWave fragt „Was soll ich suchen?“ und öffnet die Ergebnisse. Auch Google, Amazon, Wikipedia, eBay, Google Maps, Spotify. English: „Search on YouTube“.",
+  "main": "main.js",
+  "slots": {
+    "suchseite": {
+      "google": { "url": "https://www.google.com/search?q=", "label": "Google" },
+      "youtube": { "url": "https://www.youtube.com/results?search_query=", "label": "YouTube" },
+      "amazon": { "url": "https://www.amazon.de/s?k=", "label": "Amazon" },
+      "wikipedia": { "url": "https://de.wikipedia.org/w/index.php?search=", "url_en": "https://en.wikipedia.org/w/index.php?search=", "label": "Wikipedia" },
+      "ebay": { "url": "https://www.ebay.de/sch/i.html?_nkw=", "label": "eBay" },
+      "google maps": { "url": "https://www.google.com/maps/search/", "label": "Google Maps" },
+      "karte": { "url": "https://www.google.com/maps/search/", "label": "Google Maps", "lang": "de" },
+      "maps": { "url": "https://www.google.com/maps/search/", "label": "Google Maps", "lang": "en" },
+      "spotify": { "url": "spotify:search:", "label": "Spotify" }
+    }
+  }
+}

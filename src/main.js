@@ -1,6 +1,6 @@
 // CommandWave – Hauptprozess: Fenster, Tray-Icon, Tastenkombination, Mods, Mod-Updater, Einstellungen.
 // Spracherkennung (Vosk) und Sprachausgabe (Windows-Stimmen) laufen im Fenster – komplett offline.
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, nativeImage, Notification, shell, protocol, net, session } = require("electron");
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, nativeImage, Notification, shell, protocol, net, session, screen } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -43,6 +43,7 @@ const DATA = app.getPath("userData");
 const MODS_DIR = path.join(DATA, "mods");
 const DEFAULT_MODS = path.join(RES, app.isPackaged ? "mods-default" : "mods");
 const SETTINGS_FILE = path.join(DATA, "einstellungen.json");
+const ALIASES_FILE = path.join(DATA, "aussprache.json"); // gelernte Aussprache (Einstellungen → Aussprache lernen)
 // Testmodus (GitHub Actions): Fenster unsichtbar laden, Erkennung prüfen, Ergebnis ausgeben, beenden
 const SMOKE = process.argv.includes("--smoke");
 /** Offizielle Mod-Quelle: hier liegen die mitgelieferten Mods und neue Mods von CommandWave */
@@ -60,6 +61,9 @@ const DEFAULTS = {
   maxSeconds: 7,
   unloadMinutes: 0, // Sparmodus: Spracherkennung nach x Minuten ohne Benutzung entladen (0 = aus)
   beep: true,
+  wake: false, // Aktivierungswort: ohne Taste zuhören, sobald man es sagt
+  wakeWord: "hey wave",
+  overlay: true, // kleine Anzeige am Bildschirmrand, wenn das Fenster nicht vorne ist
   showOnHotkey: false,
   autostart: false,
   startHidden: false,
@@ -95,6 +99,34 @@ function saveSettings(patch) {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
+/* ---------------- Gelernte Aussprache ---------------- */
+function loadAliases() {
+  try {
+    const a = JSON.parse(fs.readFileSync(ALIASES_FILE, "utf8"));
+    return a && typeof a === "object" && !Array.isArray(a) ? a : {};
+  } catch {
+    return {};
+  }
+}
+function saveAliases(a) {
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(ALIASES_FILE, JSON.stringify(a, null, 2));
+}
+
+/* ---------------- Rückfragen („Was soll ich suchen?“) ----------------
+ * Ein Befehl fragt nach, das Fenster liest die Frage vor, hört frei (ohne Befehlsliste) zu und schickt die Antwort. */
+const asks = new Map();
+let askId = 0;
+function ask(question, lang) {
+  if (!alive()) return Promise.resolve(null);
+  const id = ++askId;
+  return new Promise((resolve) => {
+    const t = setTimeout(() => asks.delete(id) && resolve(null), 30000);
+    asks.set(id, (text) => (clearTimeout(t), asks.delete(id), resolve(text)));
+    send("ask", { id, say: question, lang });
+  });
+}
+
 /* ---------------- Assistent ---------------- */
 const actions = createActions({
   openExternal: (u) => shell.openExternal(u),
@@ -106,9 +138,11 @@ const assistant = new Assistant({
   actions,
   say: (text) => send("speak", text),
   notify: (title, body) => notify(title, body),
+  ask,
   log,
   disabled: settings.disabled,
 });
+assistant.aliases = loadAliases();
 
 function reloadMods() {
   const r = assistant.reload(settings.disabled);
@@ -127,8 +161,14 @@ function modsState() {
     slots: Object.fromEntries(Object.entries(assistant.slots).map(([k, v]) => [k, Object.entries(v).map(([key, val]) => (val && typeof val === "object" && val.label) || key)])),
     updates: { ...updates, list: updates.list.map(({ entry, source, ...u }) => u) },
     foundApps,
+    // Werte, deren Aussprache man lernen kann: { app: [[gesprochen, Anzeige], …], … }
+    learn: Object.fromEntries(LEARNABLE.filter((k) => assistant.slots[k]).map((k) => [k, Object.entries(assistant.slots[k]).filter(([key, v]) => !isAlias(k, key) && !(v && v.lang === "en" && settings.language === "de"))
+      .map(([key, v]) => [key, (v && typeof v === "object" && v.label) || key])])),
+    aliases: assistant.aliases,
   };
 }
+const LEARNABLE = ["app", "seite", "ordner", "player", "suchseite", "einstellung"];
+const isAlias = (slot, key) => !!assistant.aliases[slot]?.[key];
 
 /** Welche Sprachmodelle das Fenster laden soll (je nach Einstellung) */
 function modelUrls() {
@@ -303,6 +343,52 @@ function createWindow(show = true) {
 
 const alive = () => win && !win.isDestroyed();
 
+/* ---------------- Overlay: kleine Anzeige am Bildschirmrand beim Zuhören ----------------
+ * Zeigt sich nur, wenn das Hauptfenster nicht vorne ist; nimmt nie den Fokus und lässt Mausklicks durch. */
+const OV = { w: 380, h: 96 };
+let overlay = null;
+let overlayHide = null;
+let overlayShown = false;
+function ensureOverlay() {
+  if (overlay && !overlay.isDestroyed()) return overlay;
+  overlay = new BrowserWindow({
+    width: OV.w, height: OV.h, show: false, frame: false, transparent: true, resizable: false, movable: false, minimizable: false, maximizable: false,
+    focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, title: "CommandWave",
+    webPreferences: { preload: path.join(__dirname, "overlay-preload.js"), contextIsolation: true, sandbox: true },
+  });
+  overlay.setAlwaysOnTop(true, "screen-saver");
+  overlay.setIgnoreMouseEvents(true);
+  overlay.loadURL("cw://app/overlay.html");
+  overlay.on("closed", () => (overlay = null));
+  return overlay;
+}
+function hideOverlay(ms = 2500) {
+  clearTimeout(overlayHide);
+  overlayHide = setTimeout(() => {
+    overlayShown = false;
+    if (overlay && !overlay.isDestroyed()) overlay.hide();
+  }, ms);
+}
+function overlayUpdate(d) {
+  if (!settings.overlay || !d) return;
+  const busy = ["listening", "thinking", "speaking"].includes(d.mode);
+  const mainVisible = alive() && win.isVisible() && !win.isMinimized() && win.isFocused();
+  if (busy && !mainVisible) {
+    clearTimeout(overlayHide);
+    const o = ensureOverlay();
+    if (!overlayShown) {
+      // unten mittig auf dem Bildschirm, auf dem gerade die Maus ist
+      const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+      o.setBounds({ x: Math.round(wa.x + (wa.width - OV.w) / 2), y: wa.y + wa.height - OV.h - 28, width: OV.w, height: OV.h });
+      o.showInactive();
+      overlayShown = true;
+    }
+  }
+  if (overlay && !overlay.isDestroyed()) overlay.webContents.send("update", d);
+  if (!busy && overlayShown) hideOverlay(d.mode === "error" ? 4000 : 2500);
+}
+ipcMain.on("overlay", (_e, d) => overlayUpdate(d));
+
 function showWindow() {
   if (!alive()) return createWindow(true);
   if (win.isMinimized()) win.restore();
@@ -414,13 +500,15 @@ async function smokeExtras() {
   if (process.platform !== "win32") return out;
   const dir = path.join(DATA, "testaudio");
   fs.mkdirSync(dir, { recursive: true });
-  const all = [...SMOKE_SENTENCES.map((t) => ({ text: t, lang: "de" })), ...SMOKE_SENTENCES_EN.map((t) => ({ text: t, lang: "en" }))];
-  for (const [i, { text, lang }] of all.entries()) {
+  // dazu: Aktivierungswort (muss auslösen) und freie Sätze (für Suche/Aussprache, ohne Befehlsliste)
+  const all = [...SMOKE_SENTENCES.map((t) => ({ text: t, lang: "de" })), ...SMOKE_SENTENCES_EN.map((t) => ({ text: t, lang: "en" })),
+    { text: "hey wave", lang: "en", kind: "wake" }, { text: "hey computer", lang: "en", kind: "wake" }, { text: "funny cat videos", lang: "en", kind: "free" }, { text: "weather in berlin tomorrow", lang: "en", kind: "free" }];
+  for (const [i, { text, lang, kind }] of all.entries()) {
     const file = path.join(dir, `satz${i}.wav`);
     const ps = "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
       `$f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono); $s.SetOutputToWaveFile('${file.replace(/'/g, "''")}', $f); $s.Speak('${text}'); $s.Dispose()`;
     await new Promise((r) => execFile("powershell.exe", ["-NoProfile", "-Command", ps], { windowsHide: true, timeout: 30000 }, r));
-    if (fs.existsSync(file)) out.audio.push({ text, lang, url: `cw://app/testaudio/satz${i}.wav` });
+    if (fs.existsSync(file)) out.audio.push({ text, lang, kind: kind || "command", url: `cw://app/testaudio/satz${i}.wav` });
   }
   return out;
 }
@@ -432,7 +520,32 @@ ipcMain.handle("smoke", (_e, data) => {
 });
 ipcMain.handle("command", (_e, text, lang) => (touch(), assistant.handle(String(text || ""), lang === "en" ? "en" : settings.language === "en" ? "en" : "de")));
 // Erkennungen mehrerer Sprachen: die passendste ausführen, Antwort in deren Sprache
-ipcMain.handle("commandMulti", (_e, cands) => (touch(), assistant.handleMulti(cands, settings.language === "en" ? "en" : "de")));
+ipcMain.handle("commandMulti", (_e, cands, opts) => (touch(), assistant.handleMulti(cands, settings.language === "en" ? "en" : "de", opts || {})));
+// „Meintest du …?“ → Antwort (ja/nein)
+ipcMain.handle("confirm", (_e, text) => (touch(), assistant.answerConfirm(String(text || ""))));
+// Mikrofon-Test: nur zeigen, was verstanden würde
+ipcMain.handle("preview", (_e, cands) => assistant.preview(cands));
+ipcMain.handle("ask:answer", (_e, id, text) => asks.get(id)?.(text ? String(text) : null));
+// Aussprache lernen: „gehört“ ist ein weiterer Name für einen vorhandenen Wert
+ipcMain.handle("alias:add", (_e, { slot, key, heard, lang }) => {
+  const h = String(heard || "").toLowerCase().replace(/\[unk\]/g, " ").replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
+  if (!LEARNABLE.includes(slot) || !assistant.slots[slot]?.[key] || !h || h.split(" ").length > 4) return { ok: false, error: "ungültig" };
+  if (h === key) return { ok: false, same: true };
+  const a = { ...assistant.aliases, [slot]: { ...(assistant.aliases[slot] || {}), [h]: { key, lang: lang === "en" ? "en" : "de" } } };
+  saveAliases(a);
+  assistant.setAliases(a);
+  send("mods", modsState());
+  return { ok: true, heard: h };
+});
+ipcMain.handle("alias:remove", (_e, { slot, heard }) => {
+  const a = { ...assistant.aliases, [slot]: { ...(assistant.aliases[slot] || {}) } };
+  delete a[slot][heard];
+  if (!Object.keys(a[slot]).length) delete a[slot];
+  saveAliases(a);
+  assistant.setAliases(a);
+  send("mods", modsState());
+  return { ok: true };
+});
 ipcMain.handle("settings:save", (_e, patch) => {
   const allowed = Object.keys(DEFAULTS);
   const p = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => allowed.includes(k)));
@@ -452,6 +565,7 @@ ipcMain.handle("settings:save", (_e, patch) => {
   saveSettings(p);
   if ("autostart" in p && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, args: ["--hidden"] });
   if ("disabled" in p) reloadMods();
+  if ("overlay" in p && !settings.overlay) hideOverlay(0);
   if ("language" in p) send("mods", modsState()); // Fenster lädt die passenden Sprachmodelle
   if (tray && "hotkey" in p) buildTray();
   return { settings, hotkeyError };
@@ -474,6 +588,22 @@ ipcMain.handle("hotkey:resume", () => (hotkeyError = registerHotkey()));
 ipcMain.handle("app:update", () => appUpdate);
 ipcMain.handle("app:checkUpdate", () => (autoUpdater ? autoUpdater.checkForUpdates().then(() => appUpdate).catch((e) => ({ ...appUpdate, status: "error", error: e.message })) : { status: "dev" }));
 ipcMain.handle("app:installUpdate", () => installUpdateNow());
+// Testmodus: Overlay öffnen und prüfen, ob es lädt und Meldungen anzeigt
+ipcMain.handle("overlay:test", () => new Promise((resolve) => {
+  if (!SMOKE) return resolve(null);
+  const o = ensureOverlay();
+  const done = (r) => (clearTimeout(t), ipcMain.removeAllListeners("overlay:shown"), resolve(r));
+  const t = setTimeout(() => done({ ok: false, error: "keine Antwort" }), 15000);
+  ipcMain.once("overlay:shown", (_e, text) => done({ ok: text === "Ich höre zu …", text, visible: o.isVisible(), bounds: o.getBounds() }));
+  const go = () => {
+    overlayShown = false;
+    if (alive()) win.blur();
+    overlayUpdate({ mode: "listening", text: "Ich höre zu …", heard: "", level: 0.4 });
+    if (!overlayShown) o.showInactive();
+    o.webContents.send("update", { mode: "listening", text: "Ich höre zu …", heard: "", level: 0.4, echo: true });
+  };
+  o.webContents.isLoading() ? o.webContents.once("did-finish-load", go) : go();
+}));
 
 let hotkeyError = null;
 
@@ -553,7 +683,10 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   // läuft im Tray weiter
 });
-app.on("before-quit", () => (quitting = true));
+app.on("before-quit", () => {
+  quitting = true;
+  if (overlay && !overlay.isDestroyed()) overlay.destroy();
+});
 app.on("child-process-gone", (_e, d) => {
   if (d.reason !== "clean-exit" && d.reason !== "killed") logCrash("Hilfsprozess beendet", new Error(JSON.stringify(d)));
 });

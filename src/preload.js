@@ -10,7 +10,14 @@ const on = (ch) => (fn) => {
 contextBridge.exposeInMainWorld("cw", {
   state: () => ipcRenderer.invoke("state"),
   command: (text, lang) => ipcRenderer.invoke("command", text, lang),
-  commandMulti: (cands) => ipcRenderer.invoke("commandMulti", cands),
+  commandMulti: (cands, opts) => ipcRenderer.invoke("commandMulti", cands, opts),
+  confirm: (text) => ipcRenderer.invoke("confirm", text),
+  preview: (cands) => ipcRenderer.invoke("preview", cands),
+  askAnswer: (id, text) => ipcRenderer.invoke("ask:answer", id, text),
+  addAlias: (a) => ipcRenderer.invoke("alias:add", a),
+  removeAlias: (a) => ipcRenderer.invoke("alias:remove", a),
+  overlay: (d) => ipcRenderer.send("overlay", d),
+  overlayTest: () => ipcRenderer.invoke("overlay:test"),
   saveSettings: (patch) => ipcRenderer.invoke("settings:save", patch),
   reloadMods: () => ipcRenderer.invoke("mods:reload"),
   openModsFolder: () => ipcRenderer.invoke("mods:folder"),
@@ -27,5 +34,6 @@ contextBridge.exposeInMainWorld("cw", {
   onAppUpdate: on("appUpdate"),
   onListen: on("listen"),
   onSpeak: on("speak"),
+  onAsk: on("ask"),
   onMods: on("mods"),
 });

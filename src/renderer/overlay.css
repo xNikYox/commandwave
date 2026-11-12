@@ -1,0 +1,10 @@
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; user-select: none; }
+.pill { position: absolute; inset: 8px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-radius: 40px;
+  background: rgba(18, 20, 26, .94); border: 1px solid rgba(124, 108, 255, .45); box-shadow: 0 6px 24px rgba(0, 0, 0, .45); color: #e8ecf4; }
+.logo { width: 32px; height: 32px; flex: none; }
+.txt { flex: 1; min-width: 0; }
+.status { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.heard { font-size: 13px; color: #9aa4b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.heard:empty { display: none; }
+canvas { flex: none; }
+body[data-mode="error"] .pill { border-color: rgba(248, 113, 113, .6); }

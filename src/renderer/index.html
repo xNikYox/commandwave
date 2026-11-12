@@ -60,6 +60,26 @@
         <label class="row"><span>Speicher sparen<small class="sub">Spracherkennung entladen, wenn sie eine Weile nicht benutzt wurde – das nächste Zuhören dauert dann ~2 s länger</small></span><select data-set="unloadMinutes" data-num><option value="0">aus</option><option value="5">nach 5 Minuten</option><option value="15">nach 15 Minuten</option><option value="60">nach 1 Stunde</option></select></label>
         <label class="row"><span>Signalton beim Zuhören</span><input type="checkbox" class="switch" data-set="beep"></label>
         <label class="row"><span>Fenster bei Tastenkombination zeigen</span><input type="checkbox" class="switch" data-set="showOnHotkey"></label>
+        <label class="row"><span>Overlay beim Zuhören<small class="sub">Kleine Anzeige unten am Bildschirm, wenn das Fenster nicht vorne ist</small></span><input type="checkbox" class="switch" data-set="overlay"></label>
+      </div>
+      <div class="card">
+        <h3>Aktivierungswort</h3>
+        <label class="row"><span>Ohne Taste zuhören<small class="sub">Sag das Wort, kurze Pause, dann den Befehl. Das Mikrofon bleibt dafür offen (alles bleibt auf diesem PC) und braucht etwas Rechenzeit</small></span><input type="checkbox" class="switch" data-set="wake"></label>
+        <label class="row"><span>Wort</span><select id="wakeWord"><option value="hey wave">„Hey Wave“</option><option value="hey computer">„Hey Computer“</option><option value="computer">„Computer“</option><option value="jarvis">„Jarvis“</option></select></label>
+      </div>
+      <div class="card">
+        <h3>Mikrofon testen</h3>
+        <div class="meter" aria-hidden="true"><span id="micLevel"></span></div>
+        <div class="row"><span class="muted small" id="micTestText">Sag nach dem Klick einen Befehl – du siehst, was CommandWave versteht. Ausgeführt wird nichts.</span><button class="btn" id="micTest">Test starten</button></div>
+      </div>
+      <div class="card">
+        <h3>Aussprache lernen</h3>
+        <p class="muted small">Versteht CommandWave einen Namen nicht (z. B. eine App), sprich ihn hier dreimal vor. Danach erkennt er ihn so, wie du ihn sagst.</p>
+        <label class="row"><span>Art</span><select id="learnSlot"></select></label>
+        <label class="row"><span>Name</span><select id="learnKey"></select></label>
+        <label class="row" id="learnLangRow"><span>Sprache</span><select id="learnLang"><option value="de">Deutsch</option><option value="en">English</option></select></label>
+        <div class="row"><span class="muted small" id="learnText"></span><button class="btn primary" id="learnGo">Vorsprechen</button></div>
+        <div id="aliases"></div>
       </div>
       <div class="card">
         <h3>Sprache &amp; Stimme</h3>

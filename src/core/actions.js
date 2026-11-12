@@ -3,12 +3,13 @@
 //   open     Webseite/Ordner/Datei/      { "type": "open", "target": "https://www.youtube.com" }
 //            Windows-Einstellung         { "type": "open", "target": "ms-settings:display" }
 //   media    Lautstärke & Musik          { "type": "media", "key": "volume_up", "times": 5 }
+//   window   Fenster steuern            { "type": "window", "op": "minimize" }   (maximize, restore, left, right, desktop, focus + match)
 //   keys     Tasten drücken              { "type": "keys", "keys": "^c" }   (Schreibweise wie SendKeys)
 //   shell    PowerShell-Befehl           { "type": "shell", "command": "Stop-Computer" }   ← mächtig, nur eigene Mods
 //   sequence mehrere Schritte            { "type": "sequence", "steps": [ {…}, {…} ] }
 //   say/none nur antworten
 const { spawn } = require("node:child_process");
-const { mediaSessionScript, browserScript } = require("./winscripts");
+const { mediaSessionScript, browserScript, windowScript } = require("./winscripts");
 const path = require("node:path");
 
 /** Virtuelle Tasten für Lautstärke und Musik */
@@ -127,6 +128,10 @@ function createActions(env = {}) {
     /** Browser-Tabs: op close|new|next|previous|reopen|closeMatching|list, match = Text im Tab-Namen */
     async browser({ op = "close", match = "", all = false }) {
       return powershellJson(browserScript(op, match, all));
+    },
+    /** Fenster: op minimize|maximize|restore|left|right|desktop|focus|list; match = App-Namen (mit |) für focus */
+    async window({ op = "minimize", match = "" }) {
+      return powershellJson(windowScript(op, match, env.skipPid || process.pid));
     },
     async sequence({ steps = [] }, run) {
       for (const s of steps) {

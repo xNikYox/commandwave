@@ -13,7 +13,10 @@ function setStatus(text, mode = "") {
   $("#status").textContent = text;
   document.body.dataset.mode = mode; // "" | listening | thinking | speaking | error
   if (typeof wave !== "undefined") wave.kick();
+  cw.overlay({ mode, text, ...(mode === "listening" ? { heard: "" } : {}) }); // Overlay zeigt sich nur, wenn das Fenster nicht vorne ist
 }
+// Pegel fürs Overlay (das Fenster selbst zeichnet nicht, solange es versteckt ist)
+setInterval(() => speech.listening && cw.overlay({ level: speech.level }), 90);
 const idle = () => setStatus(state?.settings.hotkey ? `Bereit – ${keyLabel()} drücken und sprechen` : "Bereit – Mikrofon anklicken und sprechen", "");
 
 /* ---------------- Zuhören → verstehen → antworten ---------------- */
@@ -32,40 +35,95 @@ async function ensureModels() {
   speech.setGrammar(state.grammars);
 }
 
+const micError = (e) => (e.name === "NotAllowedError" ? "Kein Zugriff aufs Mikrofon – in Windows unter Datenschutz → Mikrofon erlauben" : e.name === "NotFoundError" ? "Kein Mikrofon gefunden" : "Fehler: " + e.message);
+const listeningText = (lang) => ((lang || (state.settings.language === "both" ? "de" : primaryLang())) === "en" ? "Listening …" : "Ich höre zu …");
+
+/** Einmal zuhören (mit Befehlsliste) → [{ lang, text, conf }] */
+async function hear({ lang = null, maxSeconds } = {}) {
+  const s = state.settings;
+  if (s.beep) speech.beep(true);
+  setTimeout(() => wave.kick(), 50);
+  const results = await speech.listen({
+    deviceId: s.micId,
+    maxSeconds: maxSeconds || s.maxSeconds,
+    onStart: () => setStatus(listeningText(lang), "listening"),
+    onPartial: (t) => (bubble("#heard", t), cw.overlay({ heard: t })),
+  });
+  if (s.beep) speech.beep(false);
+  return results.filter((r) => r.text && (!lang || r.lang === lang));
+}
+
+let busy = false;
 async function listen() {
   if (!ready) return;
   if (speech.listening) return speech.stop();
+  if (busy) return;
+  busy = true;
   speechSynthesis.cancel();
-  const s = state.settings;
+  speech.stopWake(); // Aktivierungswort pausiert, solange CommandWave zuhört und antwortet
   $("#heard").hidden = true;
   $("#answer").hidden = true;
   try {
     await ensureModels();
-    if (s.beep) speech.beep(true);
-    setTimeout(() => wave.kick(), 50);
-    const results = await speech.listen({
-      deviceId: s.micId,
-      maxSeconds: s.maxSeconds,
-      onStart: () => setStatus(primaryLang() === "en" && s.language !== "both" ? "Listening …" : "Ich höre zu …", "listening"),
-      onPartial: (t) => bubble("#heard", t),
-    });
-    if (s.beep) speech.beep(false);
-    const heard = results.filter((r) => r.text);
-    // sehr unsichere Erkennungen lieber nicht ausführen
+    const heard = await hear();
+    // sehr unsichere Erkennungen nicht ausführen, sondern nachfragen („Meintest du …?“)
     const sure = heard.filter((r) => r.conf == null || r.conf >= MIN_CONF);
-    if (heard.length && !sure.length) {
-      const best = heard.reduce((a, b) => ((b.conf ?? 0) > (a.conf ?? 0) ? b : a));
-      bubble("#heard", best.text + " ?");
-      const say = best.lang === "en" ? "I'm not sure I understood that. Please say it again." : "Das habe ich nicht sicher verstanden. Sag es bitte noch einmal.";
-      bubble("#answer", say, "miss");
-      setStatus(say, "speaking");
-      await speakAnswer(say, best.lang);
-      idle();
-    } else await answer(await cw.commandMulti(sure), sure.map((r) => r.text).join(" / "));
+    const r = heard.length && !sure.length ? await cw.commandMulti(heard, { unsure: true }) : await cw.commandMulti(sure);
+    await answer(r, (sure.length ? sure : heard).map((x) => x.text).join(" / "));
   } catch (e) {
-    setStatus(e.name === "NotAllowedError" ? "Kein Zugriff aufs Mikrofon – in Windows unter Datenschutz → Mikrofon erlauben" : e.name === "NotFoundError" ? "Kein Mikrofon gefunden" : "Fehler: " + e.message, "error");
+    setStatus(micError(e), "error");
   }
+  busy = false;
   scheduleUnload();
+  startWake();
+}
+
+/** „Meintest du …?“ – Frage vorlesen, Ja/Nein hören, dann ausführen (oder nicht) */
+async function confirmFlow(r) {
+  const heard = await hear({ lang: r.lang, maxSeconds: 4 });
+  const text = heard[0]?.text || "";
+  bubble("#heard", text || "…");
+  return cw.confirm(text);
+}
+
+/* Rückfrage eines Befehls (z. B. „Was soll ich suchen?“): vorlesen, frei zuhören, Antwort zurück */
+cw.onAsk(async ({ id, say: q, lang }) => {
+  let text = null;
+  try {
+    speech.stopWake();
+    bubble("#answer", q);
+    setStatus(q, "speaking");
+    await say(q, lang);
+    await ensureModels();
+    if (!speech.models[lang]) throw new Error("Sprachmodell " + lang + " nicht geladen");
+    if (state.settings.beep) speech.beep(true);
+    const r = await speech.listenFree(lang, {
+      deviceId: state.settings.micId,
+      maxSeconds: Math.max(6, state.settings.maxSeconds),
+      onStart: () => setStatus(listeningText(lang), "listening"),
+      onPartial: (t) => (bubble("#heard", t), cw.overlay({ heard: t })),
+    });
+    if (state.settings.beep) speech.beep(false);
+    text = r.text || null;
+    bubble("#heard", text || "…");
+    setStatus(lang === "en" ? "One moment …" : "Einen Moment …", "thinking");
+  } catch (e) {
+    setStatus(micError(e), "error");
+  }
+  cw.askAnswer(id, text);
+});
+
+/* ---------------- Aktivierungswort ---------------- */
+async function startWake() {
+  const s = state?.settings;
+  if (!ready || !s?.wake || busy || speech.listening || speech.wakeActive) return;
+  try {
+    await ensureModels();
+    const lang = speech.models[primaryLang()] ? primaryLang() : Object.keys(speech.models)[0];
+    await speech.startWake({ lang, phrase: s.wakeWord || "hey wave", deviceId: s.micId, onWake: () => listen() });
+  } catch (e) {
+    setStatus("Aktivierungswort: " + micError(e), "error");
+  }
 }
 
 /** Sparmodus: Sprachmodell nach einigen Minuten ohne Benutzung aus dem Speicher nehmen */
@@ -79,21 +137,21 @@ function scheduleUnload() {
 /** Eingetippter Text: in allen eingestellten Sprachen versuchen, die passendste gewinnt */
 async function handle(text) {
   const langs = state.settings.language === "both" ? ["de", "en"] : [primaryLang()];
-  await answer(await cw.commandMulti(langs.map((lang) => ({ lang, text, conf: null }))), text);
+  await answer(await cw.commandMulti(langs.map((lang) => ({ lang, text, conf: null })), { confirm: false }), text);
 }
 
 /** Ergebnis anzeigen und vorlesen */
 async function answer(r, heardText) {
   bubble("#heard", r.heard || heardText || (r.lang === "en" ? "(nothing heard)" : "(nichts verstanden)"));
   if (r.say) {
-    bubble("#answer", r.say, r.ok ? "" : "miss");
+    bubble("#answer", r.say, r.ok || r.confirm ? "" : "miss");
     setStatus(r.say, "speaking");
     await say(r.say, r.lang);
   } else if (r.ok) bubble("#answer", "✓");
+  if (r.confirm) return answer(await confirmFlow(r)); // Ergebnis der Rückfrage hat nie wieder eine Rückfrage
   idle();
 }
 
-const speakAnswer = (t, lang) => say(t, lang);
 /** Vorlesen mit der Stimme der passenden Sprache */
 function say(text, lang) {
   const s = state.settings;
@@ -270,6 +328,7 @@ function apply(mods) {
   if (ready) ensureModels().then(idle).catch((e) => setStatus("Fehler: " + e.message, "error"));
   renderCommands();
   renderMods();
+  if (ready) renderLearn();
 }
 cw.onMods(apply);
 
@@ -297,6 +356,8 @@ async function renderSettings() {
   $("#voiceEn").innerHTML = `<option value="">Automatisch (erste englische Stimme)</option>` + opts(en, s.voiceEn);
   $("#voiceHint").textContent = de.length ? `${de.length} deutsche, ${en.length} englische Stimme${en.length === 1 ? "" : "n"}` : "Keine deutsche Stimme – Windows: Einstellungen → Zeit und Sprache → Sprache → Deutsch → Sprachausgabe installieren";
   $("#language").value = s.language || "de";
+  $("#wakeWord").value = s.wakeWord || "hey wave";
+  renderLearn();
   renderSources();
 }
 
@@ -304,16 +365,131 @@ for (const el of $$("[data-set]")) el.addEventListener("change", async () => {
   const k = el.dataset.set;
   const v = el.type === "checkbox" ? el.checked : el.dataset.num != null ? Number(el.value) : el.value;
   state.settings = (await cw.saveSettings({ [k]: v })).settings;
+  if (k === "wake" || k === "micId") {
+    speech.stopWake();
+    startWake();
+  }
 });
 $("#voice").onchange = async (e) => (state.settings = (await cw.saveSettings({ voice: e.target.value })).settings);
 $("#voiceEn").onchange = async (e) => (state.settings = (await cw.saveSettings({ voiceEn: e.target.value })).settings);
 $("#language").onchange = async (e) => {
   state.settings = (await cw.saveSettings({ language: e.target.value })).settings;
 };
+$("#wakeWord").onchange = async (e) => {
+  state.settings = (await cw.saveSettings({ wakeWord: e.target.value })).settings;
+  speech.stopWake();
+  startWake();
+};
 $("#mic-select").onchange = async (e) => (state.settings = (await cw.saveSettings({ micId: e.target.value })).settings);
 $("#testVoice").onclick = async () => {
   if (state.settings.language !== "en") await say("Hallo, ich bin CommandWave. Editor wird gestartet.", "de");
   if (state.settings.language !== "de") await say("Hi, I'm CommandWave. Starting Notepad.", "en");
+};
+
+$("#mic-select").addEventListener("change", () => {
+  speech.stopWake();
+  setTimeout(startWake, 100);
+});
+
+/* ---------------- Mikrofon-Test: Pegel + was verstanden würde (nichts ausführen) ---------------- */
+$("#micTest").onclick = async () => {
+  if (speech.listening) return speech.stop();
+  if (busy || !ready) return;
+  busy = true;
+  const b = $("#micTest");
+  const t = $("#micTestText");
+  const bar = $("#micLevel");
+  let peak = 0;
+  let on = true;
+  const loop = () => {
+    if (!on) return (bar.style.width = "0");
+    peak = Math.max(peak, speech.level);
+    bar.style.width = Math.round(speech.level * 100) + "%";
+    requestAnimationFrame(loop);
+  };
+  try {
+    speech.stopWake();
+    b.textContent = "Stopp";
+    await ensureModels();
+    requestAnimationFrame(loop);
+    const res = await speech.listen({ deviceId: state.settings.micId, maxSeconds: state.settings.maxSeconds, onStart: () => (t.textContent = "Sprich jetzt …"), onPartial: (x) => (t.textContent = "Höre: „" + x + "“") });
+    const p = await cw.preview(res.filter((r) => r.text));
+    const quiet = peak < 0.08 ? " Sehr leise – Mikrofon näher halten oder in Windows den Pegel erhöhen." : "";
+    if (!p.heard) t.textContent = "Nichts verstanden – ist das richtige Mikrofon gewählt?" + quiet;
+    else {
+      const conf = p.conf != null ? ` · Sicherheit ${Math.round(p.conf * 100)} %` : "";
+      const what = p.command ? (p.sure ? ` → ${p.mod} („${p.suggestion}“)` : ` → würde nachfragen: „${p.suggestion}“?`) : " → kein passender Befehl";
+      t.textContent = `Verstanden${p.lang === "en" ? " (English)" : ""}: „${p.heard}“${what}${conf}.${quiet}`;
+    }
+  } catch (e) {
+    t.textContent = micError(e);
+  }
+  on = false;
+  b.textContent = "Test starten";
+  busy = false;
+  startWake();
+};
+
+/* ---------------- Aussprache lernen ---------------- */
+const SLOT_NAMES = { app: "App", seite: "Webseite", ordner: "Ordner", player: "Musik-App", suchseite: "Suchseite", einstellung: "Windows-Einstellung" };
+function renderLearn() {
+  const learn = state.learn || {};
+  const sel = $("#learnSlot");
+  const cur = sel.value || "app";
+  sel.innerHTML = Object.keys(learn).map((k) => `<option value="${esc(k)}"${k === cur ? " selected" : ""}>${esc(SLOT_NAMES[k] || k)}</option>`).join("");
+  renderLearnKeys();
+  $("#learnLangRow").hidden = state.settings.language !== "both";
+  $("#learnLang").value = primaryLang();
+  const rows = Object.entries(state.aliases || {}).flatMap(([slot, list]) => Object.entries(list).map(([heard, a]) => ({ slot, heard, ...a })));
+  $("#aliases").innerHTML = rows.map((r) => `<div class="alias"><span>„${esc(r.heard)}“ → <b>${esc((learn[r.slot] || []).find(([k]) => k === r.key)?.[1] || r.key)}</b> <span class="muted">(${esc(SLOT_NAMES[r.slot] || r.slot)}${r.lang === "en" ? ", English" : ""})</span></span>
+    <button class="btn" data-unalias="${esc(r.slot)}|${esc(r.heard)}">Entfernen</button></div>`).join("");
+  for (const b of $$("[data-unalias]")) b.onclick = async () => {
+    const [slot, heard] = b.dataset.unalias.split("|");
+    await cw.removeAlias({ slot, heard });
+  };
+}
+function renderLearnKeys() {
+  const list = (state.learn || {})[$("#learnSlot").value] || [];
+  const cur = $("#learnKey").value;
+  $("#learnKey").innerHTML = [...list].sort((a, b) => a[1].localeCompare(b[1], "de")).map(([k, label]) => `<option value="${esc(k)}"${k === cur ? " selected" : ""}>${esc(label)}${label.toLowerCase() !== k ? ` (${esc(k)})` : ""}</option>`).join("");
+}
+$("#learnSlot").onchange = renderLearnKeys;
+$("#learnGo").onclick = async () => {
+  if (busy || !ready) return;
+  const slot = $("#learnSlot").value;
+  const key = $("#learnKey").value;
+  const label = $("#learnKey").selectedOptions[0]?.textContent.replace(/ \(.*\)$/, "") || key;
+  const lang = state.settings.language === "both" ? $("#learnLang").value : primaryLang();
+  const t = $("#learnText");
+  if (!slot || !key) return;
+  busy = true;
+  $("#learnGo").disabled = true;
+  try {
+    speech.stopWake();
+    await ensureModels();
+    if (!speech.models[lang]) throw new Error("Sprachmodell nicht geladen");
+    const got = [];
+    for (let i = 1; i <= 3; i++) {
+      t.textContent = `Sag jetzt nur „${label}“ (${i}/3) …`;
+      if (state.settings.beep) speech.beep(true);
+      const r = await speech.listenFree(lang, { deviceId: state.settings.micId, maxSeconds: 4, onPartial: (x) => (t.textContent = `(${i}/3) „${x}“`) });
+      if (r.text) got.push(r.text);
+    }
+    if (!got.length) t.textContent = "Nichts gehört – nochmal versuchen.";
+    else {
+      // was am häufigsten verstanden wurde
+      const count = new Map();
+      for (const g of got) count.set(g, (count.get(g) || 0) + 1);
+      const heard = [...count].sort((a, b) => b[1] - a[1])[0][0];
+      const r = await cw.addAlias({ slot, key, heard, lang });
+      t.textContent = r.same ? `„${label}“ verstehe ich schon richtig.` : r.ok ? `Gelernt: „${r.heard}“ = ${label}. (Gehört: ${got.map((g) => "„" + g + "“").join(", ")})` : "Das ging nicht – bitte nur den Namen sagen (höchstens 4 Wörter).";
+    }
+  } catch (e) {
+    t.textContent = micError(e);
+  }
+  $("#learnGo").disabled = false;
+  busy = false;
+  startWake();
 };
 
 // Tastenkombination aufnehmen: Feld anklicken, Kombination drücken (Entf/Rücktaste = keine, Esc = abbrechen).
@@ -417,6 +593,7 @@ cw.onAppUpdate(renderAppUpdate);
     ready = true;
     idle();
     showHint();
+    startWake();
   } catch (e) {
     setStatus("Spracherkennung konnte nicht geladen werden: " + e.message, "error");
   }
@@ -441,7 +618,7 @@ async function audioTest() {
     setTimeout(() => resolve({ lang, text: null, ms: 15000 }), 15000);
   });
   const results = [];
-  for (const a of state.audio || []) {
+  for (const a of (state.audio || []).filter((x) => x.kind === "command")) {
     const pcm = await decode(a.url);
     const want = (await cw.match(a.text, a.lang))?.command || null;
     const own = await recognize(a.lang, pcm);
@@ -464,6 +641,46 @@ async function audioTest() {
   return { summary, results };
 }
 
+/** Testmodus: Aktivierungswort (muss bei „hey wave“ auslösen, bei normalen Befehlen nicht) und freie Erkennung */
+async function wakeFreeTest() {
+  const decode = async (url) => (await new AudioContext({ sampleRate: 16000 }).decodeAudioData(await (await fetch(url)).arrayBuffer())).getChannelData(0);
+  const feed = (rec, pcm) => new Promise((resolve) => {
+    const got = [];
+    rec.on("result", (m) => got.push(m));
+    for (let i = 0; i < pcm.length; i += 1600) rec.acceptWaveformFloat(pcm.slice(i, i + 1600), 16000);
+    rec.acceptWaveformFloat(new Float32Array(12000), 16000);
+    rec.retrieveFinalResult();
+    setTimeout(() => (rec.remove(), resolve(got)), 2500);
+  });
+  const wake = async (lang, phrase, pcm) => {
+    const rec = new speech.models[lang].KaldiRecognizer(16000, JSON.stringify(Speech.wakeGrammar(phrase)));
+    rec.setWords(true);
+    const got = await feed(rec, pcm);
+    return { fired: got.some((m) => Speech.isWake(m, phrase)), heard: got.map((m) => m.result.text).filter(Boolean).join(" | ") };
+  };
+  const audio = state.audio || [];
+  const out = { wake: [], falseAlarms: [], free: [] };
+  for (const a of audio.filter((x) => x.kind === "wake")) {
+    const pcm = await decode(a.url);
+    for (const lang of ["de", "en"]) out.wake.push({ said: a.text, lang, ...(await wake(lang, a.text, pcm)) });
+  }
+  // Fehlalarme: normale Befehle dürfen „hey wave“ nicht auslösen
+  for (const a of audio.filter((x) => x.kind === "command").slice(0, 32)) {
+    const pcm = await decode(a.url);
+    const r = await wake(a.lang, "hey wave", pcm);
+    if (r.fired) out.falseAlarms.push({ said: a.text, heard: r.heard });
+  }
+  for (const a of audio.filter((x) => x.kind === "free" || (x.kind === "command" && x.lang === "en")).slice(0, 6)) {
+    const rec = speech.freeRecognizer(a.lang);
+    const got = await feed(rec, await decode(a.url));
+    out.free.push({ said: a.text, heard: got.map((m) => m.result.text).filter(Boolean).join(" ") });
+  }
+  out.summary = { wakeEn: out.wake.filter((w) => w.lang === "en" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "en").length,
+    wakeDe: out.wake.filter((w) => w.lang === "de" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "de").length, falseAlarms: out.falseAlarms.length,
+    freeRichtig: out.free.filter((f) => f.heard === f.said).length + "/" + out.free.length };
+  return out;
+}
+
 /** Testmodus: Modell geladen? Erkenner verarbeitet Ton? Befehle laufen? Stimmen da? → an den Hauptprozess */
 async function smokeTest() {
   const out = { ok: false, ready, status: $("#status").textContent, commands: state.commands.length, grammar: state.grammar.length, mods: state.mods.length };
@@ -484,6 +701,10 @@ async function smokeTest() {
       speech.session = null;
     }
     out.audioTest = await audioTest();
+    out.wakeFree = await wakeFreeTest();
+    out.overlay = await cw.overlayTest();
+    out.confirm = await cw.commandMulti([{ lang: "de", text: "welcher tag ist", conf: 0.9 }], {}); // knapp daneben → Rückfrage „Meintest du …?“
+    out.confirmNo = await cw.confirm("nein");
     out.time = await cw.command("wie spät ist es", "de");
     out.unknown = await cw.command("erzähl mir einen witz", "de");
     out.timeEn = await cw.command("what time is it", "en");
@@ -491,7 +712,8 @@ async function smokeTest() {
     const voices = await speech.voicesReady();
     out.voices = voices.map((v) => `${v.name} (${v.lang})`);
     out.ok = ready && out.recognizer && !out.recognizer.timeout && out.time.ok && /Uhr/.test(out.time.say) && out.unknown.say === "Diesen Befehl kenne ich leider nicht." &&
-      out.timeEn.ok && /^It's /.test(out.timeEn.say) && out.models.length === 2;
+      out.timeEn.ok && /^It's /.test(out.timeEn.say) && out.models.length === 2 && !!out.overlay?.ok && out.confirm.confirm === true && out.confirmNo.cancelled === true &&
+      (out.wakeFree.wake.length === 0 || out.wakeFree.wake.some((w) => w.fired));
   } catch (e) {
     out.error = e.message;
   }
