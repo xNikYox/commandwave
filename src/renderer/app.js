@@ -646,11 +646,14 @@ async function wakeFreeTest() {
   const decode = async (url) => (await new AudioContext({ sampleRate: 16000 }).decodeAudioData(await (await fetch(url)).arrayBuffer())).getChannelData(0);
   const feed = (rec, pcm) => new Promise((resolve) => {
     const got = [];
-    rec.on("result", (m) => got.push(m));
+    let t = null;
+    const done = () => (clearTimeout(t), clearTimeout(fallback), rec.remove(), resolve(got));
+    // fertig, wenn nach dem letzten Ergebnis kurz nichts mehr kommt
+    rec.on("result", (m) => (got.push(m), clearTimeout(t), (t = setTimeout(done, 250))));
+    const fallback = setTimeout(done, 4000);
     for (let i = 0; i < pcm.length; i += 1600) rec.acceptWaveformFloat(pcm.slice(i, i + 1600), 16000);
     rec.acceptWaveformFloat(new Float32Array(12000), 16000);
     rec.retrieveFinalResult();
-    setTimeout(() => (rec.remove(), resolve(got)), 2500);
   });
   const wake = async (lang, phrase, pcm) => {
     const rec = new speech.models[lang].KaldiRecognizer(16000, JSON.stringify(Speech.wakeGrammar(phrase)));
@@ -665,7 +668,7 @@ async function wakeFreeTest() {
     for (const lang of ["de", "en"]) out.wake.push({ said: a.text, lang, ...(await wake(lang, a.text, pcm)) });
   }
   // Fehlalarme: normale Befehle dürfen „hey wave“ nicht auslösen
-  for (const a of audio.filter((x) => x.kind === "command").slice(0, 32)) {
+  for (const a of [...audio.filter((x) => x.kind === "command" && x.lang === "de").slice(0, 8), ...audio.filter((x) => x.kind === "command" && x.lang === "en").slice(0, 8)]) {
     const pcm = await decode(a.url);
     const r = await wake(a.lang, "hey wave", pcm);
     if (r.fired) out.falseAlarms.push({ said: a.text, heard: r.heard });

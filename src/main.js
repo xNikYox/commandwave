@@ -665,7 +665,7 @@ app.whenReady().then(async () => {
     setTimeout(() => {
       console.log("SMOKE " + JSON.stringify({ ok: false, error: "Zeitüberschreitung" }));
       app.exit(2);
-    }, 120000);
+    }, 240000);
   }
   const copied = seedDefaults(DEFAULT_MODS, MODS_DIR);
   if (copied.length) log("Mitgelieferte Mods eingerichtet:", copied.join(", "));

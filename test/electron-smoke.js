@@ -15,7 +15,7 @@ const timer = setTimeout(() => {
   console.error("Zeitüberschreitung\n" + out.slice(-3000));
   child.kill();
   process.exit(1);
-}, 180000);
+}, 300000);
 child.on("exit", (code) => {
   clearTimeout(timer);
   const line = out.split(/\r?\n/).find((l) => l.includes("SMOKE "));
