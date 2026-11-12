@@ -1,7 +1,7 @@
 {
   "id": "musik",
   "name": "Musik steuern",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "CommandWave",
   "description": "„Nächstes Lied“, „Nächstes Lied in Amazon Music“, „Pause bei Spotify“, „Was läuft gerade?“ – über die Windows-Mediensteuerung, gezielt je App (Amazon Music, Spotify, Browser, Medienwiedergabe).",
   "main": "main.js",
@@ -9,51 +9,68 @@
     "player": {
       "amazon music": {
         "id": "amazon",
-        "label": "Amazon Music"
+        "label": "Amazon Music",
+        "label_en": "Amazon Music"
       },
       "amazon musik": {
         "id": "amazon",
-        "label": "Amazon Music"
+        "label": "Amazon Music",
+        "label_en": "Amazon Music"
       },
       "amazon": {
         "id": "amazon",
-        "label": "Amazon Music"
+        "label": "Amazon Music",
+        "label_en": "Amazon Music"
       },
       "spotify": {
         "id": "spotify",
-        "label": "Spotify"
+        "label": "Spotify",
+        "label_en": "Spotify"
       },
       "youtube": {
         "id": "chrome|msedge|firefox|brave|opera",
-        "label": "dem Browser"
+        "label": "dem Browser",
+        "label_en": "the browser"
       },
       "browser": {
         "id": "chrome|msedge|firefox|brave|opera",
-        "label": "dem Browser"
+        "label": "dem Browser",
+        "label_en": "the browser"
       },
       "chrome": {
         "id": "chrome",
-        "label": "Chrome"
+        "label": "Chrome",
+        "label_en": "Chrome"
       },
       "edge": {
         "id": "msedge",
-        "label": "Edge"
+        "label": "Edge",
+        "label_en": "Edge"
       },
       "firefox": {
         "id": "firefox|308046b0af4a39cb",
-        "label": "Firefox"
+        "label": "Firefox",
+        "label_en": "Firefox"
       },
       "media player": {
         "id": "zunemusic|mediaplayer",
-        "label": "der Medienwiedergabe"
+        "label": "der Medienwiedergabe",
+        "label_en": "Media Player"
       },
       "vlc": {
         "id": "vlc",
-        "label": "VLC"
+        "label": "VLC",
+        "label_en": "VLC"
+      },
+      "v l c": {
+        "id": "vlc",
+        "label": "VLC",
+        "label_en": "VLC"
       },
       "medien wiedergabe": {
         "id": "zunemusic|mediaplayer",
-        "label": "der Medienwiedergabe"
+        "label": "der Medienwiedergabe",
+        "label_en": "Media Player"
       }
     }
   }

@@ -1,53 +1,75 @@
 {
   "id": "webseiten",
   "name": "Webseiten öffnen",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "CommandWave",
   "description": "„Öffne YouTube“, „Geh auf Wikipedia“ – öffnet die Seite im Standard-Browser. Eigene Seiten bei slots → seite ergänzen.",
   "slots": {
     "seite": {
       "youtube": {
         "target": "https://www.youtube.com",
-        "label": "YouTube"
+        "label": "YouTube",
+        "label_en": "YouTube"
       },
       "google": {
         "target": "https://www.google.de",
-        "label": "Google"
+        "label": "Google",
+        "label_en": "Google"
       },
       "wikipedia": {
         "target": "https://de.wikipedia.org",
-        "label": "Wikipedia"
+        "label": "Wikipedia",
+        "label_en": "Wikipedia"
       },
       "amazon": {
         "target": "https://www.amazon.de",
-        "label": "Amazon"
+        "label": "Amazon",
+        "label_en": "Amazon"
       },
       "netflix": {
         "target": "https://www.netflix.com",
-        "label": "Netflix"
+        "label": "Netflix",
+        "label_en": "Netflix"
       },
       "twitch": {
         "target": "https://www.twitch.tv",
-        "label": "Twitch"
+        "label": "Twitch",
+        "label_en": "Twitch"
       },
       "github": {
         "target": "https://github.com",
-        "label": "GitHub"
+        "label": "GitHub",
+        "label_en": "GitHub"
       },
       "wetter": {
         "target": "https://www.wetteronline.de",
         "label": "das Wetter",
-        "match": "wetter"
+        "match": "wetter",
+        "label_en": "the weather"
       },
       "nachrichten": {
         "target": "https://www.tagesschau.de",
         "label": "die Nachrichten",
-        "match": "tagesschau"
+        "match": "tagesschau",
+        "label_en": "the news"
       },
       "gmail": {
         "target": "https://mail.google.com",
         "label": "Gmail",
-        "match": "gmail"
+        "match": "gmail",
+        "label_en": "Gmail"
+      },
+      "weather": {
+        "target": "https://www.wetteronline.de",
+        "label": "das Wetter",
+        "label_en": "the weather",
+        "match": "wetter"
+      },
+      "news": {
+        "target": "https://www.tagesschau.de",
+        "label": "die Nachrichten",
+        "label_en": "the news",
+        "match": "tagesschau"
       }
     }
   },
@@ -62,6 +84,14 @@
       "action": {
         "type": "open",
         "target": "{seite.value}"
+      },
+      "en": {
+        "phrases": [
+          "open [the] [website] {seite}",
+          "go to {seite}",
+          "show me {seite}"
+        ],
+        "say": "Opening {seite}."
       }
     }
   ]

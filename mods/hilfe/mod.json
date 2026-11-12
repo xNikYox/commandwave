@@ -1,7 +1,7 @@
 {
   "id": "hilfe",
   "name": "Hilfe",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "CommandWave",
   "description": "„Was kannst du?“ – zählt die geladenen Mods auf.",
   "main": "main.js"

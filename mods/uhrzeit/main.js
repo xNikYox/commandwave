@@ -37,4 +37,31 @@ module.exports = (api) => {
     timers.splice(0).forEach(clearTimeout);
     return n ? `${n} ${n === 1 ? "Timer" : "Timer"} gelöscht.` : "Es läuft gerade kein Timer.";
   });
+
+  // English (options.lang = "en": answers in English; older CommandWave versions just ignore the option)
+  const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  api.command(["what time is it", "what is the time", "tell me the time"], () => {
+    const d = new Date();
+    return `It's ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}.`;
+  }, { lang: "en" });
+  api.command(["what day is it [today]", "what is the date [today]", "what is today"], () => {
+    const d = new Date();
+    return `Today is ${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}.`;
+  }, { lang: "en" });
+  api.command(["set a timer for {number} (minute|minutes)", "timer {number} (minute|minutes)", "remind me in {number} (minute|minutes)"], (ctx) => {
+    const min = Number(ctx.slots.number.value);
+    const t = setTimeout(() => {
+      api.say(`Your ${min} minute timer is done.`);
+      api.notify("CommandWave", `Timer done (${min} min)`);
+      timers.splice(timers.indexOf(t), 1);
+    }, min * 60 * 1000);
+    timers.push(t);
+    return `Timer set for ${min} ${min === 1 ? "minute" : "minutes"}.`;
+  }, { lang: "en" });
+  api.command(["(cancel|stop) [all] [the] timers", "(cancel|stop) [the] timer"], () => {
+    const n = timers.length;
+    timers.splice(0).forEach(clearTimeout);
+    return n ? `Cancelled ${n} ${n === 1 ? "timer" : "timers"}.` : "There is no timer running.";
+  }, { lang: "en" });
 };

@@ -62,8 +62,10 @@
         <label class="row"><span>Fenster bei Tastenkombination zeigen</span><input type="checkbox" class="switch" data-set="showOnHotkey"></label>
       </div>
       <div class="card">
-        <h3>Stimme</h3>
-        <label class="row"><span>Stimme</span><select id="voice"></select></label>
+        <h3>Sprache &amp; Stimme</h3>
+        <label class="row"><span>Sprache<small class="sub">Bei „beide“ hören zwei Erkenner zu – CommandWave antwortet in der Sprache, in der du sprichst (braucht ~150 MB mehr Speicher)</small></span><select id="language"><option value="de">Deutsch</option><option value="en">English</option><option value="both">Deutsch + English</option></select></label>
+        <label class="row"><span>Stimme (Deutsch)</span><select id="voice"></select></label>
+        <label class="row"><span>Stimme (English)</span><select id="voiceEn"></select></label>
         <label class="row"><span>Tempo</span><input type="range" min="0.6" max="1.6" step="0.1" data-set="rate" data-num></label>
         <label class="row"><span>Lautstärke</span><input type="range" min="0" max="1" step="0.1" data-set="volume" data-num></label>
         <div class="row"><span class="muted small" id="voiceHint"></span><button class="btn" id="testVoice">Probe</button></div>

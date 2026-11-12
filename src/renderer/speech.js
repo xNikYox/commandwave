@@ -8,53 +8,69 @@
 
   class Speech {
     constructor() {
-      this.model = null;
-      this.rec = null;
-      this.grammar = null;
+      this.models = {}; // Sprache → Vosk-Modell
+      this.recs = {}; // Sprache → Erkenner
+      this.grammars = {};
+      this.urls = {};
       this.session = null;
       this.level = 0;
     }
 
-    /** Sprachmodell laden (einmal beim Start, dauert ein paar Sekunden) */
-    async load(url) {
-      this.url = url;
-      this.model = await Vosk.createModel(url);
-      this.grammar = null;
-      this.rec = null;
+    /** Sprachmodelle laden, z. B. { de: url, en: url } (parallel, dauert ein paar Sekunden) */
+    async load(urls) {
+      this.urls = { ...urls };
+      for (const l of Object.keys(this.models)) if (!(l in urls)) this.drop(l);
+      await Promise.all(Object.entries(urls).map(async ([l, url]) => {
+        if (!this.models[l]) this.models[l] = await Vosk.createModel(url);
+      }));
       return this;
     }
 
     get loaded() {
-      return !!this.model;
+      return Object.keys(this.urls).length > 0 && Object.keys(this.urls).every((l) => this.models[l]);
     }
 
-    /** Sprachmodell aus dem Speicher werfen (Sparmodus) – beim nächsten Zuhören wird es neu geladen */
-    unload() {
-      if (!this.model || this.session) return;
+    get langs() {
+      return Object.keys(this.recs);
+    }
+
+    drop(l) {
       try {
-        this.model.terminate();
+        this.recs[l]?.remove();
+        this.models[l]?.terminate();
       } catch {
         // schon beendet
       }
-      this.model = null;
-      this.rec = null;
+      delete this.recs[l];
+      delete this.models[l];
+      delete this.grammars[l];
     }
 
-    /** Erlaubte Sätze setzen (aus den Mods) – neuer Erkenner */
-    setGrammar(list) {
-      const g = JSON.stringify(list || []);
-      if (g === this.grammar && this.rec) return;
-      this.grammar = g;
-      try {
-        this.rec?.remove();
-      } catch {
-        // schon weg
+    /** Sparmodus: alle Sprachmodelle aus dem Speicher werfen – beim nächsten Zuhören werden sie neu geladen */
+    unload() {
+      if (this.session) return;
+      for (const l of Object.keys(this.models)) this.drop(l);
+    }
+
+    /** Erlaubte Sätze je Sprache setzen ({ de: [...], en: [...] }) – neuer Erkenner nur bei Änderung */
+    setGrammar(grammars) {
+      for (const [l, list] of Object.entries(grammars || {})) {
+        if (!this.models[l]) continue;
+        const g = JSON.stringify(list || []);
+        if (g === this.grammars[l] && this.recs[l]) continue;
+        this.grammars[l] = g;
+        try {
+          this.recs[l]?.remove();
+        } catch {
+          // schon weg
+        }
+        const rec = new this.models[l].KaldiRecognizer(SAMPLE_RATE, g);
+        rec.setWords(true); // je Wort eine Sicherheit (conf) – für die Sicherheitsschwelle
+        // Ereignisse nur einmal je Erkenner anmelden und an die laufende Aufnahme weitergeben
+        rec.on("result", (m) => this.session?.onResult(l, m));
+        rec.on("partialresult", (m) => this.session?.onPart(l, m));
+        this.recs[l] = rec;
       }
-      this.rec = new this.model.KaldiRecognizer(SAMPLE_RATE, g);
-      this.rec.setWords(true); // je Wort eine Sicherheit (conf) – für die Sicherheitsschwelle
-      // Ereignisse nur einmal je Erkenner anmelden und an die laufende Aufnahme weitergeben
-      this.rec.on("result", (m) => this.session?.onResult(m));
-      this.rec.on("partialresult", (m) => this.session?.onPart(m));
     }
 
     get listening() {
@@ -62,11 +78,12 @@
     }
 
     /**
-     * Zuhören, bis ein Satz erkannt ist, Stille folgt oder maxSeconds um sind.
-     * → Promise<{ text, conf }> (text leer = nichts verstanden; conf = Sicherheit 0..1). onPartial(text) zeigt Zwischenstände.
+     * Zuhören (alle geladenen Sprachen gleichzeitig mit demselben Ton), bis Stille folgt oder maxSeconds um sind.
+     * → Promise<[{ lang, text, conf }]> (text leer = nichts verstanden; conf = Sicherheit 0..1)
      */
     async listen({ deviceId = "", maxSeconds = 7, onPartial = () => {}, onStart = () => {} } = {}) {
-      if (!this.rec) throw new Error("Spracherkennung noch nicht bereit");
+      const langs = this.langs;
+      if (!langs.length) throw new Error("Spracherkennung noch nicht bereit");
       if (this.session) return this.stop();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { deviceId: deviceId ? { exact: deviceId } : undefined, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -78,15 +95,17 @@
       src.connect(node); // Ausgang bleibt offen: nichts wird abgespielt
 
       return new Promise((resolve) => {
-        let lastPartial = "";
+        const partial = {};
+        const results = {};
         let lastChange = Date.now();
         let heardSomething = false;
         const started = Date.now();
-        const finish = (text, conf = null) => {
+        const finish = () => {
           if (!this.session) return;
           const s = this.session;
           this.session = null;
           clearInterval(s.timer);
+          clearTimeout(s.fallback);
           node.port.onmessage = null;
           try {
             src.disconnect();
@@ -97,32 +116,35 @@
           stream.getTracks().forEach((t) => t.stop());
           ctx.close().catch(() => {});
           this.level = 0;
-          resolve({ text: clean(text), conf });
+          resolve(langs.map((l) => results[l] || { lang: l, text: clean(partial[l]), conf: null }));
         };
-        const onResult = (m) => {
-          const t = clean(m.result?.text);
-          // Sicherheit: Mittel über die erkannten Wörter (ohne [unk])
+        const onResult = (l, m) => {
           const words = (m.result?.result || []).filter((w) => w.word !== "[unk]");
           const conf = words.length ? words.reduce((a, w) => a + (w.conf ?? 1), 0) / words.length : null;
-          if (t) finish(t, conf);
-          else if (this.session?.final) finish("", null);
+          const text = clean(m.result?.text);
+          // erstes vollständiges Ergebnis je Sprache zählt; fertig, wenn alle Sprachen geantwortet haben
+          if (!results[l] && (text || this.session?.final)) results[l] = { lang: l, text, conf };
+          if (this.session?.final && langs.every((x) => results[x])) finish();
+          else if (text && !this.session?.final) this.session?.stop(); // einer hat einen Satz → alle abschließen
         };
-        const onPart = (m) => {
+        const onPart = (l, m) => {
           const t = clean(m.result?.partial);
-          if (t && t !== lastPartial) {
-            lastPartial = t;
+          if (t && t !== partial[l]) {
+            partial[l] = t;
             lastChange = Date.now();
             heardSomething = true;
-            onPartial(t);
+            onPartial(t, l);
           }
         };
         node.port.onmessage = (e) => {
           if (!this.session) return;
           this.level = Math.min(1, e.data.level * 6);
-          try {
-            this.rec.acceptWaveformFloat(e.data.data, SAMPLE_RATE);
-          } catch {
-            // Erkenner wurde gerade ersetzt
+          for (const l of langs) {
+            try {
+              this.recs[l]?.acceptWaveformFloat(e.data.data, SAMPLE_RATE);
+            } catch {
+              // Erkenner wurde gerade ersetzt
+            }
           }
         };
         this.session = {
@@ -130,9 +152,11 @@
           onResult,
           onPart,
           stop: () => {
+            if (!this.session || this.session.final) return;
             this.session.final = true;
-            this.rec.retrieveFinalResult();
-            setTimeout(() => finish(lastPartial, null), 800); // falls kein Ergebnis mehr kommt
+            for (const l of langs) if (!results[l]) this.recs[l]?.retrieveFinalResult();
+            if (langs.every((x) => results[x])) return finish();
+            this.session.fallback = setTimeout(finish, 900); // falls kein Ergebnis mehr kommt
           },
           timer: setInterval(() => {
             const now = Date.now();
@@ -163,15 +187,17 @@
       });
     }
 
-    /** Sprechen mit lokaler Stimme → Promise, wenn fertig */
-    speak(text, { voice = "", rate = 1, volume = 1 } = {}) {
+    /** Sprechen mit lokaler Stimme in der passenden Sprache → Promise, wenn fertig */
+    speak(text, { voice = "", rate = 1, volume = 1, lang = "de" } = {}) {
       return new Promise((resolve) => {
         if (!text) return resolve();
         speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
         const all = this.voices();
-        u.voice = all.find((v) => v.name === voice) || all.find((v) => v.lang.toLowerCase().startsWith("de")) || null;
-        u.lang = u.voice?.lang || "de-DE";
+        const wantLang = lang === "en" ? "en" : "de";
+        const chosen = all.find((v) => v.name === voice && v.lang.toLowerCase().startsWith(wantLang));
+        u.voice = chosen || all.find((v) => v.lang.toLowerCase().startsWith(wantLang)) || null;
+        u.lang = u.voice?.lang || (wantLang === "en" ? "en-US" : "de-DE");
         u.rate = rate;
         u.volume = volume;
         u.onend = u.onerror = () => resolve();

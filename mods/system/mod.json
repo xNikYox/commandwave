@@ -1,32 +1,180 @@
 {
   "id": "system",
   "name": "Windows & Ordner",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "CommandWave",
   "description": "Ordner öffnen („Öffne Downloads“), Windows-Einstellungen („Öffne die Bluetooth Einstellungen“), PC sperren.",
   "slots": {
     "ordner": {
-      "downloads": { "target": "%USERPROFILE%\\Downloads", "label": "Downloads" },
-      "dokumente": { "target": "%USERPROFILE%\\Documents", "label": "Dokumente" },
-      "bilder": { "target": "%USERPROFILE%\\Pictures", "label": "Bilder" },
-      "musik": { "target": "%USERPROFILE%\\Music", "label": "Musik" },
-      "videos": { "target": "%USERPROFILE%\\Videos", "label": "Videos" },
-      "desktop": { "target": "%USERPROFILE%\\Desktop", "label": "Desktop" }
+      "downloads": {
+        "target": "%USERPROFILE%\\Downloads",
+        "label": "Downloads",
+        "label_en": "Downloads"
+      },
+      "dokumente": {
+        "target": "%USERPROFILE%\\Documents",
+        "label": "Dokumente",
+        "label_en": "Dokumente"
+      },
+      "bilder": {
+        "target": "%USERPROFILE%\\Pictures",
+        "label": "Bilder",
+        "label_en": "Bilder"
+      },
+      "musik": {
+        "target": "%USERPROFILE%\\Music",
+        "label": "Musik",
+        "label_en": "Musik"
+      },
+      "videos": {
+        "target": "%USERPROFILE%\\Videos",
+        "label": "Videos",
+        "label_en": "Videos"
+      },
+      "desktop": {
+        "target": "%USERPROFILE%\\Desktop",
+        "label": "Desktop",
+        "label_en": "Desktop"
+      },
+      "documents": {
+        "target": "%USERPROFILE%\\Documents",
+        "label": "Documents",
+        "label_en": "Documents"
+      },
+      "pictures": {
+        "target": "%USERPROFILE%\\Pictures",
+        "label": "Pictures",
+        "label_en": "Pictures"
+      },
+      "music": {
+        "target": "%USERPROFILE%\\Music",
+        "label": "Music",
+        "label_en": "Music"
+      }
     },
     "einstellung": {
-      "bluetooth": { "target": "ms-settings:bluetooth", "label": "Bluetooth" },
-      "wlan": { "target": "ms-settings:network-wifi", "label": "WLAN" },
-      "anzeige": { "target": "ms-settings:display", "label": "Anzeige" },
-      "sound": { "target": "ms-settings:sound", "label": "Sound" },
-      "update": { "target": "ms-settings:windowsupdate", "label": "Windows Update" },
-      "apps": { "target": "ms-settings:appsfeatures", "label": "Apps" },
-      "spracheingabe": { "target": "ms-settings:speech", "label": "Spracheingabe" },
-      "drucker": { "target": "ms-settings:printers", "label": "Drucker" }
+      "bluetooth": {
+        "target": "ms-settings:bluetooth",
+        "label": "Bluetooth",
+        "label_en": "Bluetooth"
+      },
+      "wlan": {
+        "target": "ms-settings:network-wifi",
+        "label": "WLAN",
+        "label_en": "WLAN"
+      },
+      "anzeige": {
+        "target": "ms-settings:display",
+        "label": "Anzeige",
+        "label_en": "Anzeige"
+      },
+      "sound": {
+        "target": "ms-settings:sound",
+        "label": "Sound",
+        "label_en": "Sound"
+      },
+      "update": {
+        "target": "ms-settings:windowsupdate",
+        "label": "Windows Update",
+        "label_en": "Windows Update"
+      },
+      "apps": {
+        "target": "ms-settings:appsfeatures",
+        "label": "Apps",
+        "label_en": "Apps"
+      },
+      "spracheingabe": {
+        "target": "ms-settings:speech",
+        "label": "Spracheingabe",
+        "label_en": "Spracheingabe"
+      },
+      "drucker": {
+        "target": "ms-settings:printers",
+        "label": "Drucker",
+        "label_en": "Drucker"
+      },
+      "wifi": {
+        "target": "ms-settings:network-wifi",
+        "label": "Wi-Fi",
+        "label_en": "Wi-Fi"
+      },
+      "display": {
+        "target": "ms-settings:display",
+        "label": "Display",
+        "label_en": "Display"
+      },
+      "windows update": {
+        "target": "ms-settings:windowsupdate",
+        "label": "Windows Update",
+        "label_en": "Windows Update"
+      },
+      "printer": {
+        "target": "ms-settings:printers",
+        "label": "Printer",
+        "label_en": "Printer"
+      },
+      "speech": {
+        "target": "ms-settings:speech",
+        "label": "Speech",
+        "label_en": "Speech"
+      }
     }
   },
   "commands": [
-    { "phrases": ["öffne [den ordner] {ordner}", "zeig [mir] [meine] {ordner}"], "say": "{ordner} wird geöffnet", "action": { "type": "open", "target": "{ordner.value}" } },
-    { "phrases": ["öffne [die] {einstellung} einstellungen", "{einstellung} einstellungen"], "say": "Ich öffne die Einstellungen für {einstellung}.", "action": { "type": "open", "target": "{einstellung.value}" } },
-    { "phrases": ["(sperre|sperr) [den] (computer|pc|bildschirm)"], "say": "Der Computer wird gesperrt.", "action": { "type": "run", "target": "rundll32.exe", "args": ["user32.dll,LockWorkStation"] } }
+    {
+      "phrases": [
+        "öffne [den ordner] {ordner}",
+        "zeig [mir] [meine] {ordner}"
+      ],
+      "say": "{ordner} wird geöffnet",
+      "action": {
+        "type": "open",
+        "target": "{ordner.value}"
+      },
+      "en": {
+        "phrases": [
+          "open [my] [the] {ordner} [folder]",
+          "show [me] my {ordner}"
+        ],
+        "say": "Opening {ordner}"
+      }
+    },
+    {
+      "phrases": [
+        "öffne [die] {einstellung} einstellungen",
+        "{einstellung} einstellungen"
+      ],
+      "say": "Ich öffne die Einstellungen für {einstellung}.",
+      "action": {
+        "type": "open",
+        "target": "{einstellung.value}"
+      },
+      "en": {
+        "phrases": [
+          "open [the] {einstellung} settings",
+          "{einstellung} settings"
+        ],
+        "say": "Opening the {einstellung} settings."
+      }
+    },
+    {
+      "phrases": [
+        "(sperre|sperr) [den] (computer|pc|bildschirm)"
+      ],
+      "say": "Der Computer wird gesperrt.",
+      "action": {
+        "type": "run",
+        "target": "rundll32.exe",
+        "args": [
+          "user32.dll,LockWorkStation"
+        ]
+      },
+      "en": {
+        "phrases": [
+          "lock [the] (computer|pc|screen)"
+        ],
+        "say": "Locking the computer."
+      }
+    }
   ]
 }

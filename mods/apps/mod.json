@@ -1,9 +1,9 @@
 {
   "id": "apps",
   "name": "Apps starten und schließen",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "CommandWave",
-  "description": "Startet Programme per Sprache: „Öffne die App Editor“, „Starte den Rechner“, „Schließe Paint“. Weitere Apps einfach unten bei slots → app ergänzen. Tipp: Kennt die Spracherkennung ein Wort nicht (z. B. Discord), schreibt man es, wie es klingt („disk kord“).",
+  "description": "Startet Programme per Sprache: „Öffne die App Editor“, „Starte den Rechner“, „Schließe Paint“. Weitere Apps einfach unten bei slots → app ergänzen. Tipp: Kennt die Spracherkennung ein Wort nicht (z. B. Discord), schreibt man es, wie es klingt („disk kord“). English: „Open Notepad“, „Start the calculator“, „Close Paint“.",
   "slots": {
     "app": {
       "editor": {
@@ -14,7 +14,8 @@
       "notepad": {
         "target": "notepad.exe",
         "process": "notepad.exe",
-        "label": "Editor"
+        "label": "Editor",
+        "label_en": "Notepad"
       },
       "rechner": {
         "target": "calc.exe",
@@ -29,12 +30,14 @@
       "paint": {
         "target": "mspaint.exe",
         "process": "mspaint.exe",
-        "label": "Paint"
+        "label": "Paint",
+        "label_en": "Paint"
       },
       "explorer": {
         "target": "explorer.exe",
         "process": "",
-        "label": "Explorer"
+        "label": "Explorer",
+        "label_en": "Explorer"
       },
       "datei explorer": {
         "target": "explorer.exe",
@@ -44,17 +47,20 @@
       "task manager": {
         "target": "taskmgr.exe",
         "process": "Taskmgr.exe",
-        "label": "Task-Manager"
+        "label": "Task-Manager",
+        "label_en": "Task Manager"
       },
       "terminal": {
         "target": "wt.exe",
         "process": "WindowsTerminal.exe",
-        "label": "Terminal"
+        "label": "Terminal",
+        "label_en": "Terminal"
       },
       "powershell": {
         "target": "powershell.exe",
         "process": "powershell.exe",
-        "label": "PowerShell"
+        "label": "PowerShell",
+        "label_en": "PowerShell"
       },
       "einstellungen": {
         "target": "ms-settings:",
@@ -79,42 +85,50 @@
       "word": {
         "target": "winword",
         "process": "WINWORD.EXE",
-        "label": "Word"
+        "label": "Word",
+        "label_en": "Word"
       },
       "excel": {
         "target": "excel",
         "process": "EXCEL.EXE",
-        "label": "Excel"
+        "label": "Excel",
+        "label_en": "Excel"
       },
       "outlook": {
         "target": "outlook",
         "process": "OUTLOOK.EXE",
-        "label": "Outlook"
+        "label": "Outlook",
+        "label_en": "Outlook"
       },
       "edge": {
         "target": "msedge",
         "process": "msedge.exe",
-        "label": "Edge"
+        "label": "Edge",
+        "label_en": "Edge"
       },
       "firefox": {
         "target": "firefox",
         "process": "firefox.exe",
-        "label": "Firefox"
+        "label": "Firefox",
+        "label_en": "Firefox"
       },
       "chrome": {
         "target": "chrome",
         "process": "chrome.exe",
-        "label": "Chrome"
+        "label": "Chrome",
+        "label_en": "Chrome"
       },
       "spotify": {
         "target": "spotify:",
         "process": "Spotify.exe",
-        "label": "Spotify"
+        "label": "Spotify",
+        "label_en": "Spotify"
       },
       "steam": {
         "target": "steam:",
         "process": "steam.exe",
-        "label": "Steam"
+        "label": "Steam",
+        "label_en": "Steam"
       },
       "kommandozeile": {
         "target": "cmd.exe",
@@ -140,6 +154,54 @@
         "target": "discord:",
         "process": "Discord.exe",
         "label": "Discord"
+      },
+      "calculator": {
+        "target": "calc.exe",
+        "process": "CalculatorApp.exe",
+        "label": "Rechner",
+        "label_en": "Calculator"
+      },
+      "file explorer": {
+        "target": "explorer.exe",
+        "process": "",
+        "label": "Explorer",
+        "label_en": "File Explorer"
+      },
+      "command prompt": {
+        "target": "cmd.exe",
+        "process": "cmd.exe",
+        "label": "Eingabeaufforderung",
+        "label_en": "Command Prompt"
+      },
+      "settings": {
+        "target": "ms-settings:",
+        "process": "SystemSettings.exe",
+        "label": "Einstellungen",
+        "label_en": "Settings"
+      },
+      "control panel": {
+        "target": "control.exe",
+        "process": "",
+        "label": "Systemsteuerung",
+        "label_en": "Control Panel"
+      },
+      "camera": {
+        "target": "microsoft.windows.camera:",
+        "process": "WindowsCamera.exe",
+        "label": "Kamera",
+        "label_en": "Camera"
+      },
+      "calendar": {
+        "target": "outlookcal:",
+        "process": "",
+        "label": "Kalender",
+        "label_en": "Calendar"
+      },
+      "snipping tool": {
+        "target": "ms-screenclip:",
+        "process": "",
+        "label": "Bildschirmfoto",
+        "label_en": "Snipping Tool"
       }
     }
   },
@@ -155,6 +217,15 @@
       "action": {
         "type": "run",
         "target": "{app.value}"
+      },
+      "en": {
+        "phrases": [
+          "open [the] [app] {app}",
+          "start [the] [app] {app}",
+          "launch {app}",
+          "run {app}"
+        ],
+        "say": "Starting {app}"
       }
     },
     {
@@ -171,6 +242,14 @@
           "/IM",
           "{app.process}"
         ]
+      },
+      "en": {
+        "phrases": [
+          "close [the] [app] {app}",
+          "quit {app}",
+          "exit {app}"
+        ],
+        "say": "Closing {app}"
       }
     }
   ]

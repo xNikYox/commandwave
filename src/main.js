@@ -51,7 +51,9 @@ const OFFICIAL = { type: "github", repo: "xNikYox/commandwave-mods", branch: "ma
 const DEFAULTS = {
   hotkey: "Control+Space",
   hotkeyLabel: "Strg + Leertaste", // Anzeige so, wie die Taste auf der Tastatur heißt (z. B. „Strg + #“)
+  language: "de", // "de" | "en" | "both" (beide gleichzeitig – braucht mehr Speicher)
   voice: "", // leer = erste deutsche Stimme
+  voiceEn: "", // leer = erste englische Stimme
   rate: 1,
   volume: 1,
   micId: "",
@@ -119,11 +121,19 @@ function modsState() {
     mods: assistant.mods.map(({ dir, ...m }) => m),
     errors: assistant.errors,
     grammar: assistant.grammar,
+    grammars: assistant.grammars,
+    models: modelUrls(),
     commands: assistant.compiled.map((c) => ({ id: c.id, mod: c.mod, phrases: c.phrases })),
     slots: Object.fromEntries(Object.entries(assistant.slots).map(([k, v]) => [k, Object.entries(v).map(([key, val]) => (val && typeof val === "object" && val.label) || key)])),
     updates: { ...updates, list: updates.list.map(({ entry, source, ...u }) => u) },
     foundApps,
   };
+}
+
+/** Welche Sprachmodelle das Fenster laden soll (je nach Einstellung) */
+function modelUrls() {
+  const langs = SMOKE || settings.language === "both" ? ["de", "en"] : [settings.language === "en" ? "en" : "de"];
+  return Object.fromEntries(langs.filter((l) => fs.existsSync(path.join(RES, "models", `vosk-model-${l}.tar.gz`))).map((l) => [l, `cw://app/model/vosk-model-${l}.tar.gz`]));
 }
 
 /* ---------------- Mod-Updater ---------------- */
@@ -395,30 +405,34 @@ function registerHotkey() {
 ipcMain.handle("state", async () => ({ settings, version: app.getVersion(), modsDir: MODS_DIR, hotkeyError: hotkeyError, smoke: SMOKE, ...(SMOKE ? await smokeExtras() : {}), ...modsState() }));
 
 /** Testmodus: Testsätze mit der Windows-Stimme als WAV sprechen lassen + bisherige Satz-Grammatik zum Vergleich */
+const SMOKE_SENTENCES_EN = ["open notepad", "what time is it", "next song", "close the tab", "volume up", "pause the music", "what is playing", "new tab",
+  "what day is it today", "open youtube", "start the calculator", "turn it down", "open downloads", "set a timer for five minutes", "what can you do", "lock the computer"];
 const SMOKE_SENTENCES = ["öffne die app editor", "wie spät ist es", "nächstes lied", "schließe den tab", "lauter", "pause", "was läuft gerade", "neuer tab",
   "welcher tag ist heute", "öffne youtube", "starte den rechner", "mach leiser", "öffne downloads", "stelle einen timer auf fünf minuten", "was kannst du", "würfle"];
 async function smokeExtras() {
-  const P = require("./core/phrases");
-  const out = { grammars: { saetze: P.grammar(assistant.compiled, assistant.slots), kompakt: P.compactGrammar(assistant.compiled, assistant.slots), woerter: P.vocabulary(assistant.compiled, assistant.slots) }, audio: [] };
+  const out = { audio: [] };
   if (process.platform !== "win32") return out;
   const dir = path.join(DATA, "testaudio");
   fs.mkdirSync(dir, { recursive: true });
-  for (const [i, text] of SMOKE_SENTENCES.entries()) {
+  const all = [...SMOKE_SENTENCES.map((t) => ({ text: t, lang: "de" })), ...SMOKE_SENTENCES_EN.map((t) => ({ text: t, lang: "en" }))];
+  for (const [i, { text, lang }] of all.entries()) {
     const file = path.join(dir, `satz${i}.wav`);
     const ps = "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
       `$f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono); $s.SetOutputToWaveFile('${file.replace(/'/g, "''")}', $f); $s.Speak('${text}'); $s.Dispose()`;
     await new Promise((r) => execFile("powershell.exe", ["-NoProfile", "-Command", ps], { windowsHide: true, timeout: 30000 }, r));
-    if (fs.existsSync(file)) out.audio.push({ text, url: `cw://app/testaudio/satz${i}.wav` });
+    if (fs.existsSync(file)) out.audio.push({ text, lang, url: `cw://app/testaudio/satz${i}.wav` });
   }
   return out;
 }
-ipcMain.handle("match", (_e, text) => (SMOKE ? assistant.matchOnly(text) : null));
+ipcMain.handle("match", (_e, text, lang) => (SMOKE ? assistant.matchOnly(text, lang || "de") : null));
 ipcMain.handle("smoke", (_e, data) => {
   if (!SMOKE) return;
   console.log("SMOKE " + JSON.stringify(data));
   setTimeout(() => app.exit(data && data.ok ? 0 : 1), 200);
 });
-ipcMain.handle("command", (_e, text) => (touch(), assistant.handle(String(text || ""))));
+ipcMain.handle("command", (_e, text, lang) => (touch(), assistant.handle(String(text || ""), lang === "en" ? "en" : settings.language === "en" ? "en" : "de")));
+// Erkennungen mehrerer Sprachen: die passendste ausführen, Antwort in deren Sprache
+ipcMain.handle("commandMulti", (_e, cands) => (touch(), assistant.handleMulti(cands, settings.language === "en" ? "en" : "de")));
 ipcMain.handle("settings:save", (_e, patch) => {
   const allowed = Object.keys(DEFAULTS);
   const p = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => allowed.includes(k)));
@@ -438,6 +452,7 @@ ipcMain.handle("settings:save", (_e, patch) => {
   saveSettings(p);
   if ("autostart" in p && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, args: ["--hidden"] });
   if ("disabled" in p) reloadMods();
+  if ("language" in p) send("mods", modsState()); // Fenster lädt die passenden Sprachmodelle
   if (tray && "hotkey" in p) buildTray();
   return { settings, hotkeyError };
 });

@@ -26,4 +26,29 @@ module.exports = (api) => {
   };
   api.command(["(schließe|schließ) [den] {seite} tab", "(schließe|schließ) [den] tab (mit|von) {seite}", "{seite} tab (schließen|zu)"], closeBy(false));
   api.command(["(schließe|schließ) alle {seite} tabs", "alle {seite} tabs schließen", "(schließe|schließ) alle tabs (mit|von) {seite}"], closeBy(true));
+
+  // English
+  const en = { lang: "en" };
+  const simpleEn = (op, answer) => async () => {
+    if (!api.browser) return "Please update CommandWave for that.";
+    const r = await api.browser(op);
+    return r.ok ? answer : r.error === "kein Browser" ? "I can't find an open browser window." : "Sorry, that didn't work.";
+  };
+  api.command(["close [the] [current] tab", "close this tab"], simpleEn("close", "Tab closed."), en);
+  api.command(["(open|new) [a] [new] tab"], simpleEn("new", ""), en);
+  api.command(["next tab", "go to the next tab"], simpleEn("next", ""), en);
+  api.command(["previous tab", "go to the previous tab", "last tab"], simpleEn("previous", ""), en);
+  api.command(["reopen [the] [last] [closed] tab", "restore [the] tab"], simpleEn("reopen", ""), en);
+  const closeByEn = (all) => async (ctx) => {
+    if (!api.browser) return "Please update CommandWave for that.";
+    const s = ctx.slots.seite;
+    const term = s.value?.match || s.key;
+    const label = s.value?.label_en || s.value?.label || s.key;
+    const r = await api.browser("closeMatching", term, all);
+    if (!r.ok) return "Sorry, that didn't work.";
+    if (!r.count) return `I couldn't find a ${label} tab.`;
+    return r.count === 1 ? `Closed the ${label} tab.` : `Closed ${r.count} ${label} tabs.`;
+  };
+  api.command(["close [the] {seite} tab", "close the tab (with|from) {seite}"], closeByEn(false), en);
+  api.command(["close all [the] {seite} tabs", "close all tabs (with|from) {seite}"], closeByEn(true), en);
 };

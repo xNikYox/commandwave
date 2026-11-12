@@ -105,7 +105,8 @@ function similarity(a, b) {
 }
 
 const WORD_MIN = 0.72; // ab hier zählt ein Wort als „gemeint“
-const FILLER = new Set(["bitte", "mal", "doch", "jetzt", "einmal", "kurz", "hey", "hallo", "ok", "okay", "äh", "ähm", "also",
+const FILLER = new Set(["please", "the", "a", "an", "my", "me", "to", "hey", "can", "could", "you", "would", "just", "now",
+  "bitte", "mal", "doch", "jetzt", "einmal", "kurz", "hey", "hallo", "ok", "okay", "äh", "ähm", "also",
   "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "mir", "mich", "uns", "für"]);
 
 /** Bester Platzhalter-Wert für 1–4 Wörter: { key, value, sim } */
@@ -257,7 +258,7 @@ function vocabulary(compiled, slotValues = {}) {
  * Text mit {platzhalter} füllen: {app} → Anzeigename, {app.value} → Wert (bei Objekten target), {app.key} → Schlüssel,
  * {app.heard} → gehörtes Wort, {app.irgendwas} → Eigenschaft des Werts (z. B. {app.process})
  */
-function fill(template, slots = {}, extra = {}) {
+function fill(template, slots = {}, extra = {}, lang = "de") {
   return String(template || "").replace(/\{([\w-]+)(?:\.([\w-]+))?\}/g, (m, name, prop) => {
     if (name in extra && !prop) return extra[name];
     const s = slots[name];
@@ -268,6 +269,8 @@ function fill(template, slots = {}, extra = {}) {
     if (prop === "key") return s.key;
     if (prop === "heard") return s.heard;
     if (prop && prop !== "label") return obj && prop in obj ? obj[prop] : m;
+    // Anzeigename: auf Englisch label_en (sonst das gesprochene Wort), auf Deutsch label
+    if (lang === "en") return obj?.label_en || capitalize(s.key);
     return obj?.label || capitalize(s.key);
   });
 }

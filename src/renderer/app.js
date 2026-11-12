@@ -19,6 +19,19 @@ const idle = () => setStatus(state?.settings.hotkey ? `Bereit – ${keyLabel()} 
 /* ---------------- Zuhören → verstehen → antworten ---------------- */
 const MIN_CONF = 0.45; // darunter lieber nachfragen als einen falschen Befehl ausführen
 
+/** Modell-Adressen relativ zur Seite (in der App cw://app/…) */
+const modelUrls = () => Object.fromEntries(Object.entries(state.models || {}).map(([l, u]) => [l, new URL(u.replace(/^cw:\/\/app\//, ""), location.href).href]));
+const primaryLang = () => (state.settings.language === "en" ? "en" : "de");
+
+async function ensureModels() {
+  const urls = modelUrls();
+  if (!speech.loaded || JSON.stringify(Object.keys(urls).sort()) !== JSON.stringify(Object.keys(speech.urls).sort())) {
+    setStatus(primaryLang() === "en" ? "Loading speech recognition …" : "Lade Spracherkennung …", "thinking");
+    await speech.load(urls);
+  }
+  speech.setGrammar(state.grammars);
+}
+
 async function listen() {
   if (!ready) return;
   if (speech.listening) return speech.stop();
@@ -27,28 +40,28 @@ async function listen() {
   $("#heard").hidden = true;
   $("#answer").hidden = true;
   try {
-    if (!speech.loaded) {
-      setStatus("Lade Spracherkennung …", "thinking");
-      await speech.load(speech.url);
-      speech.setGrammar(state.grammar);
-    }
+    await ensureModels();
     if (s.beep) speech.beep(true);
     setTimeout(() => wave.kick(), 50);
-    const r = await speech.listen({
+    const results = await speech.listen({
       deviceId: s.micId,
       maxSeconds: s.maxSeconds,
-      onStart: () => setStatus("Ich höre zu …", "listening"),
+      onStart: () => setStatus(primaryLang() === "en" && s.language !== "both" ? "Listening …" : "Ich höre zu …", "listening"),
       onPartial: (t) => bubble("#heard", t),
     });
     if (s.beep) speech.beep(false);
-    if (r.text && r.conf != null && r.conf < MIN_CONF) {
-      bubble("#heard", r.text + " ?");
-      const say = "Das habe ich nicht sicher verstanden. Sag es bitte noch einmal.";
+    const heard = results.filter((r) => r.text);
+    // sehr unsichere Erkennungen lieber nicht ausführen
+    const sure = heard.filter((r) => r.conf == null || r.conf >= MIN_CONF);
+    if (heard.length && !sure.length) {
+      const best = heard.reduce((a, b) => ((b.conf ?? 0) > (a.conf ?? 0) ? b : a));
+      bubble("#heard", best.text + " ?");
+      const say = best.lang === "en" ? "I'm not sure I understood that. Please say it again." : "Das habe ich nicht sicher verstanden. Sag es bitte noch einmal.";
       bubble("#answer", say, "miss");
       setStatus(say, "speaking");
-      await speakAnswer(say);
+      await speakAnswer(say, best.lang);
       idle();
-    } else await handle(r.text);
+    } else await answer(await cw.commandMulti(sure), sure.map((r) => r.text).join(" / "));
   } catch (e) {
     setStatus(e.name === "NotAllowedError" ? "Kein Zugriff aufs Mikrofon – in Windows unter Datenschutz → Mikrofon erlauben" : e.name === "NotFoundError" ? "Kein Mikrofon gefunden" : "Fehler: " + e.message, "error");
   }
@@ -63,23 +76,32 @@ function scheduleUnload() {
   if (min > 0) unloadTimer = setTimeout(() => speech.unload(), min * 60 * 1000);
 }
 
+/** Eingetippter Text: in allen eingestellten Sprachen versuchen, die passendste gewinnt */
 async function handle(text) {
-  bubble("#heard", text || "(nichts verstanden)");
-  setStatus("Verstehe …", "thinking");
-  const r = await cw.command(text);
+  const langs = state.settings.language === "both" ? ["de", "en"] : [primaryLang()];
+  await answer(await cw.commandMulti(langs.map((lang) => ({ lang, text, conf: null }))), text);
+}
+
+/** Ergebnis anzeigen und vorlesen */
+async function answer(r, heardText) {
+  bubble("#heard", r.heard || heardText || (r.lang === "en" ? "(nothing heard)" : "(nichts verstanden)"));
   if (r.say) {
     bubble("#answer", r.say, r.ok ? "" : "miss");
     setStatus(r.say, "speaking");
-    await say(r.say);
-  } else if (r.ok) bubble("#answer", "✓ Erledigt");
+    await say(r.say, r.lang);
+  } else if (r.ok) bubble("#answer", "✓");
   idle();
 }
 
-const speakAnswer = (t) => say(t);
-function say(text) {
+const speakAnswer = (t, lang) => say(t, lang);
+/** Vorlesen mit der Stimme der passenden Sprache */
+function say(text, lang) {
   const s = state.settings;
-  return speech.speak(text, { voice: s.voice, rate: Number(s.rate) || 1, volume: Number(s.volume) });
+  const l = lang || guessLang(text);
+  return speech.speak(text, { voice: l === "en" ? s.voiceEn : s.voice, rate: Number(s.rate) || 1, volume: Number(s.volume), lang: l });
 }
+/** Sprache eines Textes grob erkennen (für Meldungen ohne Sprachangabe, z. B. abgelaufene Timer) */
+const guessLang = (t) => (/[äöüß]|\b(der|die|das|ist|und|nicht|ich|wird)\b/i.test(t) ? "de" : /\b(the|is|your|you|it|and|not)\b/i.test(t) ? "en" : primaryLang());
 
 function bubble(sel, text, cls = "") {
   const el = $(sel);
@@ -92,7 +114,7 @@ $("#mic").addEventListener("click", listen);
 cw.onListen(listen);
 cw.onSpeak(async (text) => {
   bubble("#answer", text);
-  await say(text);
+  await say(text, guessLang(text));
 });
 $("#typed").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -245,7 +267,7 @@ function showHint() {
 function apply(mods) {
   Object.assign(state, mods);
   if (ready) showHint();
-  if (ready) speech.setGrammar(state.grammar);
+  if (ready) ensureModels().then(idle).catch((e) => setStatus("Fehler: " + e.message, "error"));
   renderCommands();
   renderMods();
 }
@@ -269,8 +291,12 @@ async function renderSettings() {
   // Stimmen
   const voices = await speech.voicesReady();
   const de = voices.filter((v) => v.lang.toLowerCase().startsWith("de"));
-  $("#voice").innerHTML = `<option value="">Automatisch (erste deutsche Stimme)</option>` + voices.map((v) => `<option value="${esc(v.name)}"${v.name === s.voice ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("");
-  $("#voiceHint").textContent = de.length ? `${de.length} deutsche Stimme${de.length > 1 ? "n" : ""} gefunden` : "Keine deutsche Stimme – Windows: Einstellungen → Zeit und Sprache → Sprache → Deutsch → Sprachausgabe installieren";
+  const en = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
+  const opts = (list, cur) => list.map((v) => `<option value="${esc(v.name)}"${v.name === cur ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("");
+  $("#voice").innerHTML = `<option value="">Automatisch (erste deutsche Stimme)</option>` + opts(de, s.voice);
+  $("#voiceEn").innerHTML = `<option value="">Automatisch (erste englische Stimme)</option>` + opts(en, s.voiceEn);
+  $("#voiceHint").textContent = de.length ? `${de.length} deutsche, ${en.length} englische Stimme${en.length === 1 ? "" : "n"}` : "Keine deutsche Stimme – Windows: Einstellungen → Zeit und Sprache → Sprache → Deutsch → Sprachausgabe installieren";
+  $("#language").value = s.language || "de";
   renderSources();
 }
 
@@ -280,8 +306,15 @@ for (const el of $$("[data-set]")) el.addEventListener("change", async () => {
   state.settings = (await cw.saveSettings({ [k]: v })).settings;
 });
 $("#voice").onchange = async (e) => (state.settings = (await cw.saveSettings({ voice: e.target.value })).settings);
+$("#voiceEn").onchange = async (e) => (state.settings = (await cw.saveSettings({ voiceEn: e.target.value })).settings);
+$("#language").onchange = async (e) => {
+  state.settings = (await cw.saveSettings({ language: e.target.value })).settings;
+};
 $("#mic-select").onchange = async (e) => (state.settings = (await cw.saveSettings({ micId: e.target.value })).settings);
-$("#testVoice").onclick = () => say("Hallo, ich bin CommandWave. Editor wird gestartet.");
+$("#testVoice").onclick = async () => {
+  if (state.settings.language !== "en") await say("Hallo, ich bin CommandWave. Editor wird gestartet.", "de");
+  if (state.settings.language !== "de") await say("Hi, I'm CommandWave. Starting Notepad.", "en");
+};
 
 // Tastenkombination aufnehmen: Feld anklicken, Kombination drücken (Entf/Rücktaste = keine, Esc = abbrechen).
 // Während der Aufnahme sind die globalen Tastenkombinationen aus – sonst fängt Windows die alte Kombination ab.
@@ -379,9 +412,8 @@ cw.onAppUpdate(renderAppUpdate);
   cw.appUpdate().then(renderAppUpdate);
   if (state.smoke) console.log("Testmodus: lade Modell …", location.href);
   try {
-    await speech.load(new URL("model/vosk-model-de.tar.gz", location.href).href); // im Worker braucht Vosk eine volle Adresse
-    if (state.smoke) console.log("Testmodus: Modell geladen");
-    speech.setGrammar(state.grammar);
+    await ensureModels(); // im Worker braucht Vosk volle Adressen
+    if (state.smoke) console.log("Testmodus: Modelle geladen", Object.keys(speech.models).join(", "));
     ready = true;
     idle();
     showHint();
@@ -391,41 +423,43 @@ cw.onAppUpdate(renderAppUpdate);
   if (state.smoke) smokeTest();
 })();
 
-/** Testmodus: Windows-Stimme spricht Testsätze → Erkennung mit Satz-Grammatik (bisher) und Wortschatz (neu) */
+/** Testmodus: Windows-Stimme spricht Testsätze → Erkennung je Sprache und mit beiden Sprachen gleichzeitig */
 async function audioTest() {
+  const decode = async (url) => (await new AudioContext({ sampleRate: 16000 }).decodeAudioData(await (await fetch(url)).arrayBuffer())).getChannelData(0);
+  const recognize = (lang, pcm) => new Promise((resolve) => {
+    const rec = new speech.models[lang].KaldiRecognizer(16000, JSON.stringify(state.grammars[lang]));
+    rec.setWords(true);
+    const t0 = performance.now();
+    rec.on("result", (m) => {
+      const words = (m.result.result || []).filter((w) => w.word !== "[unk]");
+      resolve({ lang, text: m.result.text, conf: words.length ? words.reduce((a, w) => a + w.conf, 0) / words.length : null, ms: Math.round(performance.now() - t0) });
+      rec.remove();
+    });
+    for (let i = 0; i < pcm.length; i += 1600) rec.acceptWaveformFloat(pcm.slice(i, i + 1600), 16000);
+    rec.acceptWaveformFloat(new Float32Array(8000), 16000);
+    rec.retrieveFinalResult();
+    setTimeout(() => resolve({ lang, text: null, ms: 15000 }), 15000);
+  });
   const results = [];
   for (const a of state.audio || []) {
-    const buf = await (await fetch(a.url)).arrayBuffer();
-    const decoded = await new AudioContext({ sampleRate: 16000 }).decodeAudioData(buf);
-    const pcm = decoded.getChannelData(0);
-    const run = async (grammar) => {
-      const rec = new speech.model.KaldiRecognizer(16000, JSON.stringify(grammar));
-      const t0 = performance.now();
-      const text = await new Promise((resolve) => {
-        rec.on("result", (m) => resolve(m.result.text));
-        for (let i = 0; i < pcm.length; i += 1600) rec.acceptWaveformFloat(pcm.slice(i, i + 1600), 16000);
-        rec.acceptWaveformFloat(new Float32Array(8000), 16000);
-        rec.retrieveFinalResult();
-        setTimeout(() => resolve(null), 15000);
-      });
-      const ms = Math.round(performance.now() - t0);
-      rec.remove();
-      return { text, ms, command: text ? (await cw.match(text))?.command || null : null };
-    };
-    const r = { said: a.text };
-    for (const [name, g] of Object.entries(state.grammars)) r[name] = await run(g);
-    results.push(r);
+    const pcm = await decode(a.url);
+    const want = (await cw.match(a.text, a.lang))?.command || null;
+    const own = await recognize(a.lang, pcm);
+    const ownCmd = own.text ? (await cw.match(own.text, a.lang))?.command || null : null;
+    // beide Sprachen: wie in der App – passendster Treffer gewinnt
+    const both = await Promise.all(["de", "en"].map((l) => recognize(l, pcm)));
+    let pick = null;
+    for (const b of both) {
+      const m = b.text ? await cw.match(b.text, b.lang) : null;
+      const rank = m ? m.score + 0.15 * (b.conf ?? 0.7) : -1;
+      if (!pick || rank > pick.rank) pick = { ...b, command: m?.command || null, rank };
+    }
+    results.push({ said: a.text, lang: a.lang, want, heard: own.text, conf: own.conf && Math.round(own.conf * 100) / 100, ok: !!want && ownCmd === want, both: { lang: pick.lang, heard: pick.text, ok: !!want && pick.command === want } });
   }
-  // Auswertung: wie oft wurde der richtige Befehl erkannt, wie schnell
-  const want = await Promise.all(results.map(async (r) => (await cw.match(r.said))?.command || null));
   const summary = {};
-  for (const name of Object.keys(state.grammars || {})) {
-    summary[name] = {
-      eintraege: state.grammars[name].reduce((n, x) => n + x.split(" ").length, 0),
-      richtig: results.filter((r, i) => r[name].command && r[name].command === want[i]).length + "/" + results.length,
-      woertlich: results.filter((r) => r[name].text === r.said).length,
-      msGesamt: results.reduce((n, r) => n + r[name].ms, 0),
-    };
+  for (const l of ["de", "en"]) {
+    const r = results.filter((x) => x.lang === l);
+    summary[l] = { richtig: r.filter((x) => x.ok).length + "/" + r.length, mitBeidenSprachen: r.filter((x) => x.both.ok).length + "/" + r.length, spracheErkannt: r.filter((x) => x.both.lang === l).length + "/" + r.length };
   }
   return { summary, results };
 }
@@ -441,19 +475,23 @@ async function smokeTest() {
         const buf = ctx.createBuffer(1, 24000, 16000);
         const d = buf.getChannelData(0);
         for (let i = 0; i < d.length; i++) d[i] = (Math.random() - 0.5) * 0.002;
-        speech.session = { onResult: (m) => resolve({ text: m.result?.text ?? null }), onPart() {} };
-        speech.rec.acceptWaveform(buf);
-        speech.rec.retrieveFinalResult();
+        speech.session = { onResult: (_l, m) => resolve({ text: m.result?.text ?? null }), onPart() {} };
+        const rec = speech.recs.de || Object.values(speech.recs)[0];
+        rec.acceptWaveform(buf);
+        rec.retrieveFinalResult();
         setTimeout(() => resolve({ text: null, timeout: true }), 15000);
       });
       speech.session = null;
     }
     out.audioTest = await audioTest();
-    out.time = await cw.command("wie spät ist es");
-    out.unknown = await cw.command("erzähl mir einen witz");
+    out.time = await cw.command("wie spät ist es", "de");
+    out.unknown = await cw.command("erzähl mir einen witz", "de");
+    out.timeEn = await cw.command("what time is it", "en");
+    out.models = Object.keys(speech.models);
     const voices = await speech.voicesReady();
     out.voices = voices.map((v) => `${v.name} (${v.lang})`);
-    out.ok = ready && out.recognizer && !out.recognizer.timeout && out.time.ok && /Uhr/.test(out.time.say) && out.unknown.say === "Diesen Befehl kenne ich leider nicht.";
+    out.ok = ready && out.recognizer && !out.recognizer.timeout && out.time.ok && /Uhr/.test(out.time.say) && out.unknown.say === "Diesen Befehl kenne ich leider nicht." &&
+      out.timeEn.ok && /^It's /.test(out.timeEn.say) && out.models.length === 2;
   } catch (e) {
     out.error = e.message;
   }

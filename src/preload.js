@@ -9,7 +9,8 @@ const on = (ch) => (fn) => {
 
 contextBridge.exposeInMainWorld("cw", {
   state: () => ipcRenderer.invoke("state"),
-  command: (text) => ipcRenderer.invoke("command", text),
+  command: (text, lang) => ipcRenderer.invoke("command", text, lang),
+  commandMulti: (cands) => ipcRenderer.invoke("commandMulti", cands),
   saveSettings: (patch) => ipcRenderer.invoke("settings:save", patch),
   reloadMods: () => ipcRenderer.invoke("mods:reload"),
   openModsFolder: () => ipcRenderer.invoke("mods:folder"),
@@ -19,7 +20,7 @@ contextBridge.exposeInMainWorld("cw", {
   pauseHotkeys: () => ipcRenderer.invoke("hotkey:pause"),
   resumeHotkeys: () => ipcRenderer.invoke("hotkey:resume"),
   smoke: (data) => ipcRenderer.invoke("smoke", data),
-  match: (text) => ipcRenderer.invoke("match", text),
+  match: (text, lang) => ipcRenderer.invoke("match", text, lang),
   appUpdate: () => ipcRenderer.invoke("app:update"),
   checkAppUpdate: () => ipcRenderer.invoke("app:checkUpdate"),
   installAppUpdate: () => ipcRenderer.invoke("app:installUpdate"),

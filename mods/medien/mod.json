@@ -1,7 +1,7 @@
 {
   "id": "medien",
   "name": "Lautstärke",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "CommandWave",
   "description": "„Lauter“, „Leiser“, „Ton aus“. Lieder überspringen, Pause und „Was läuft gerade?“ macht jetzt die Mod „Musik steuern“.",
   "commands": [
@@ -15,6 +15,14 @@
         "type": "media",
         "key": "volume_up",
         "times": 5
+      },
+      "en": {
+        "phrases": [
+          "volume up",
+          "louder",
+          "turn it up"
+        ],
+        "say": ""
       }
     },
     {
@@ -27,6 +35,14 @@
         "type": "media",
         "key": "volume_down",
         "times": 5
+      },
+      "en": {
+        "phrases": [
+          "volume down",
+          "quieter",
+          "turn it down"
+        ],
+        "say": ""
       }
     },
     {
@@ -38,6 +54,14 @@
       "action": {
         "type": "media",
         "key": "mute"
+      },
+      "en": {
+        "phrases": [
+          "mute",
+          "turn the sound (off|on)",
+          "sound (off|on)"
+        ],
+        "say": ""
       }
     }
   ]

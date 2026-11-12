@@ -68,9 +68,14 @@ function loadAll(modsDir, host, disabled = []) {
     // Platzhalter-Werte zusammenführen (mehrere Mods dürfen z. B. weitere Apps zu {app} beisteuern)
     for (const [name, values] of Object.entries(mod.slots || {})) slots[name] = { ...(slots[name] || {}), ...values };
     for (const [i, c] of (mod.commands || []).entries()) {
-      commands.push({ id: `${mod.id}#${i}`, mod: mod.id, phrases: c.phrases, say: c.say ?? null, action: c.action || null, unknownSlot: c.unknown || null });
+      commands.push({ id: `${mod.id}#${i}`, mod: mod.id, lang: "de", phrases: c.phrases, say: c.say ?? null, action: c.action || null });
       info.commands++;
       info.examples.push(c.phrases[0]);
+      // englische Fassung: "en": { "phrases": [...], "say": "…" } – gleiche Aktion (ältere Versionen ignorieren das Feld)
+      if (c.en && Array.isArray(c.en.phrases) && c.en.phrases.length) {
+        commands.push({ id: `${mod.id}#${i}en`, mod: mod.id, lang: "en", phrases: c.en.phrases.filter((x) => typeof x === "string" && x.trim()), say: c.en.say ?? c.say ?? null, action: c.action || null });
+        info.commands++;
+      }
     }
     if (mod.main) {
       try {
@@ -97,10 +102,12 @@ function makeApi(mod, base, host, commands, slots, info) {
     version: mod.version,
     dir: base,
     /** Befehl mit eigener Logik: handler(ctx) → Text zum Sprechen (oder { say }) – darf async sein */
-    command(phrases, handler) {
+    command(phrases, handler, options = {}) {
       const list = (Array.isArray(phrases) ? phrases : [phrases]).filter((p) => typeof p === "string" && p.trim());
       if (!list.length || typeof handler !== "function") throw new Error("command(phrases, handler) erwartet Sätze und eine Funktion");
-      commands.push({ id: `${mod.id}#js${n++}`, mod: mod.id, phrases: list, handler });
+      // options.lang: "de" (Standard) oder "en" – Antworten kommen dann in dieser Sprache
+      const lang = options.lang === "en" ? "en" : "de";
+      commands.push({ id: `${mod.id}#js${n++}`, mod: mod.id, lang, phrases: list, handler });
       info.commands++;
       info.examples.push(list[0]);
     },
