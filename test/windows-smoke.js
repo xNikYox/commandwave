@@ -149,10 +149,11 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   console.log("Tippen:", JSON.stringify(typed));
   assert.equal(typed.ok, true, typed.error);
   await wait(800);
-  const content = execFileSync("powershell.exe", ["-NoProfile", "-Command",
-    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes; $p = Get-Process notepad | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1; " +
-    "$r = [Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle); $c = New-Object Windows.Automation.OrCondition((New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Document)), (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit))); " +
-    "$e = $r.FindFirst([Windows.Automation.TreeScope]::Descendants, $c); try { $e.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern).DocumentRange.GetText(-1) } catch { $e.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value }"]).toString();
+  // zurücklesen: Editor nach vorne, alles markieren und kopieren, Zwischenablage lesen
+  await actions.window({ op: "focus", match: "notepad" });
+  await wait(400);
+  const content = execFileSync("powershell.exe", ["-NoProfile", "-STA", "-Command",
+    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400; Get-Clipboard -Raw"]).toString();
   console.log("Im Editor steht:", JSON.stringify(content.trim()));
   assert.match(content, /Hallo Welt, 50% \(Test\)!/);
   assert.match(content, /Zweite Zeile äöü/);
