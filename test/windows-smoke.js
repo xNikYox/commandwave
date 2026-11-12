@@ -149,11 +149,14 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   console.log("Tippen:", JSON.stringify(typed));
   assert.equal(typed.ok, true, typed.error);
   await wait(800);
-  // zurücklesen: Editor nach vorne, alles markieren und kopieren, Zwischenablage lesen
-  await actions.window({ op: "focus", match: "notepad" });
-  await wait(400);
-  const content = execFileSync("powershell.exe", ["-NoProfile", "-STA", "-Command",
-    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^a'); Start-Sleep -Milliseconds 200; [System.Windows.Forms.SendKeys]::SendWait('^c'); Start-Sleep -Milliseconds 400; Get-Clipboard -Raw"]).toString();
+  // zurücklesen über die Bedienungshilfe: alle Elemente mit Text-/Wert-Muster durchsuchen; dazu der Fenstertitel
+  const content = execFileSync("powershell.exe", ["-NoProfile", "-Command",
+    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes; " +
+    "$out = @(); foreach ($p in @(Get-Process notepad -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 })) { $out += 'TITEL: ' + $p.MainWindowTitle; " +
+    "$r = [Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle); " +
+    "foreach ($e in $r.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)) { " +
+    "try { $out += 'TEXT: ' + $e.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern).DocumentRange.GetText(-1) } catch {} ; " +
+    "try { $v = $e.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value; if ($v) { $out += 'WERT: ' + $v } } catch {} } }; $out -join [char]10"]).toString();
   console.log("Im Editor steht:", JSON.stringify(content.trim()));
   assert.match(content, /Hallo Welt, 50% \(Test\)!/);
   assert.match(content, /Zweite Zeile äöü/);
