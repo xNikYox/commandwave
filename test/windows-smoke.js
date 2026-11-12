@@ -140,9 +140,39 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   assert.equal(r.say, "Editor ist gerade nicht offen.");
   console.log("Fenster steuern: ok");
 
+  // Diktieren: Text in den Editor tippen und über die Bedienungshilfe zurücklesen
+  await actions.run({ target: "notepad.exe" });
+  await wait(2500);
+  await actions.window({ op: "focus", match: "notepad" });
+  await wait(500);
+  const typed = await actions.typeText({ text: "Hallo Welt, 50% (Test)!\nZweite Zeile äöü" });
+  console.log("Tippen:", JSON.stringify(typed));
+  assert.equal(typed.ok, true, typed.error);
+  await wait(800);
+  const content = execFileSync("powershell.exe", ["-NoProfile", "-Command",
+    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes; $p = Get-Process notepad | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1; " +
+    "$r = [Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle); $c = New-Object Windows.Automation.OrCondition((New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Document)), (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit))); " +
+    "$e = $r.FindFirst([Windows.Automation.TreeScope]::Descendants, $c); try { $e.GetCurrentPattern([Windows.Automation.TextPattern]::Pattern).DocumentRange.GetText(-1) } catch { $e.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value }"]).toString();
+  console.log("Im Editor steht:", JSON.stringify(content.trim()));
+  assert.match(content, /Hallo Welt, 50% \(Test\)!/);
+  assert.match(content, /Zweite Zeile äöü/);
+  execFileSync("taskkill", ["/IM", "notepad.exe", "/F"]);
+  console.log("Diktieren (Text tippen): ok");
+
+  // Lautstärke je App: Mixer-Code muss sich übersetzen lassen; ohne Ton/Audiogerät sauber melden
+  const vol = await actions.appVolume({ match: "gibt-es-nicht-cw", op: "get" });
+  console.log("Lautstärkemixer:", JSON.stringify(vol));
+  assert.ok(["keine Wiedergabe", "kein Audiogerät"].includes(vol.error), "Mixer: " + vol.error);
+  // Systeminfo
+  const si = await actions.systemInfo();
+  console.log("Systeminfo:", JSON.stringify(si));
+  assert.ok(si.memTotal > 0 && si.disk && si.disk.total > 0 && si.cpu >= 0 && si.cpu <= 100);
+  console.log(`„Systemstatus“ → ${(await a.handle("systemstatus")).say}`);
+
   // Alle PowerShell-Skripte müssen sich fehlerfrei einlesen lassen (auch Teile, die hier nicht laufen)
   const ws = require("../src/core/winscripts");
-  const scripts = { media: ws.mediaSessionScript("info", "amazon"), browser: ws.browserScript("closeMatching", "youtube"), window: ws.windowScript("focus", "notepad"), amazon: ws.amazonMusicScript("blinding lights (live)") };
+  const scripts = { media: ws.mediaSessionScript("info", "amazon"), browser: ws.browserScript("closeMatching", "youtube"), window: ws.windowScript("focus", "notepad"), amazon: ws.amazonMusicScript("blinding lights (live)"),
+    type: ws.typeTextScript("hallo (welt)", 1), volume: ws.appVolumeScript("spotify", "down", 0.2), system: ws.systemScript() };
   for (const [name, sc] of Object.entries(scripts)) {
     const f = path.join(os.tmpdir(), `cw-${name}.ps1`);
     require("node:fs").writeFileSync(f, "\ufeff" + sc);

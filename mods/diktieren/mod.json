@@ -1,0 +1,8 @@
+{
+  "id": "diktieren",
+  "name": "Diktieren",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "„Schreib was“ – CommandWave fragt „Was soll ich schreiben?“ und tippt den Text ins vorderste Fenster. Satzzeichen sprechen: „Komma“, „Punkt“, „Fragezeichen“, „neue Zeile“. English: „Type something“.",
+  "main": "main.js"
+}

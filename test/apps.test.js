@@ -60,7 +60,7 @@ test("gefundene Apps: „Öffne Visual Studio Code“ startet über den Explorer
   a.setExtraSlots({ app: toSlots(many) });
   assert.ok(a.grammar.includes("visual studio code"), "jede App einmal in der Grammatik");
   assert.ok(!a.grammar.includes("starte die app programm 59"), "Apps nicht in jedem Muster wiederholt");
-  assert.ok(a.grammar.length < 3000, String(a.grammar.length));
+  assert.ok(a.grammar.length < 5000, String(a.grammar.length)); // 1.6: Zahlen (Rechnen, Erinnerungen, Prozent) – Hörtest im CI prüft, dass die Erkennung nicht leidet
   assert.equal(a.grammar.at(-1), "[unk]");
 });
 

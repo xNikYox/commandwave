@@ -1,0 +1,8 @@
+{
+  "id": "erinnerungen",
+  "name": "Erinnerungen",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "„Erinnere mich in zehn Minuten“ oder „Erinnere mich um achtzehn Uhr dreißig“ – CommandWave fragt „Woran?“ und meldet sich dann mit Stimme und Benachrichtigung. Bleibt auch nach einem Neustart. „Welche Erinnerungen habe ich?“, „Lösche alle Erinnerungen“. English: „Remind me in ten minutes“.",
+  "main": "main.js"
+}

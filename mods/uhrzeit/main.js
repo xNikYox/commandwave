@@ -21,7 +21,7 @@ module.exports = (api) => {
 
   // Timer: „stelle einen Timer auf fünf Minuten“ – {zahl} kommt aus den slots in mod.json
   const timers = [];
-  api.command(["(stelle|stell) [einen] timer (auf|für) {zahl} (minute|minuten)", "timer {zahl} (minute|minuten)", "erinnere mich in {zahl} (minute|minuten)"], (ctx) => {
+  api.command(["(stelle|stell) [einen] timer (auf|für) {zahl} (minute|minuten)", "timer {zahl} (minute|minuten)"], (ctx) => {
     const min = Number(ctx.slots.zahl.value);
     const t = setTimeout(() => {
       api.say(`Der Timer über ${min} ${min === 1 ? "Minute" : "Minuten"} ist abgelaufen.`);
@@ -49,7 +49,7 @@ module.exports = (api) => {
     const d = new Date();
     return `Today is ${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}.`;
   }, { lang: "en" });
-  api.command(["set a timer for {number} (minute|minutes)", "timer {number} (minute|minutes)", "remind me in {number} (minute|minutes)"], (ctx) => {
+  api.command(["set a timer for {number} (minute|minutes)", "timer {number} (minute|minutes)"], (ctx) => {
     const min = Number(ctx.slots.number.value);
     const t = setTimeout(() => {
       api.say(`Your ${min} minute timer is done.`);

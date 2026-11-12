@@ -1,0 +1,82 @@
+{
+  "id": "lautstaerke",
+  "name": "Lautstärke je App",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "Lautstärke einzelner Programme wie im Windows-Lautstärkemixer: „Spotify leiser“, „Discord stumm“, „Chrome auf dreißig Prozent“, „Wie laut ist Spotify?“. English: „Turn Spotify down“, „Mute Discord“.",
+  "main": "main.js",
+  "slots": {
+    "tonquelle": {
+      "discord": {
+        "process": "discord",
+        "label": "Discord",
+        "lang": "en"
+      },
+      "disk kord": {
+        "process": "discord",
+        "label": "Discord",
+        "lang": "de"
+      },
+      "spotify": {
+        "process": "spotify",
+        "label": "Spotify"
+      },
+      "amazon music": {
+        "process": "amazon music",
+        "label": "Amazon Music"
+      },
+      "amazon musik": {
+        "process": "amazon music",
+        "label": "Amazon Music",
+        "lang": "de"
+      },
+      "chrome": {
+        "process": "chrome",
+        "label": "Chrome"
+      },
+      "firefox": {
+        "process": "firefox",
+        "label": "Firefox"
+      },
+      "edge": {
+        "process": "msedge",
+        "label": "Edge"
+      },
+      "browser": {
+        "process": "chrome|msedge|firefox|brave|opera",
+        "label": "der Browser",
+        "label_en": "the browser"
+      },
+      "teams": {
+        "process": "ms-teams|teams",
+        "label": "Teams"
+      },
+      "zoom": {
+        "process": "zoom",
+        "label": "Zoom"
+      },
+      "steam": {
+        "process": "steam",
+        "label": "Steam"
+      },
+      "vlc": {
+        "process": "vlc",
+        "label": "VLC"
+      },
+      "v l c": {
+        "process": "vlc",
+        "label": "VLC",
+        "lang": "en"
+      },
+      "minecraft": {
+        "process": "javaw|minecraft",
+        "label": "Minecraft"
+      },
+      "spiel": {
+        "process": "javaw|minecraft|game",
+        "label": "das Spiel",
+        "lang": "de"
+      }
+    }
+  }
+}

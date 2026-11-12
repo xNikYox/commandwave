@@ -9,7 +9,8 @@
 //   sequence mehrere Schritte            { "type": "sequence", "steps": [ {…}, {…} ] }
 //   say/none nur antworten
 const { spawn } = require("node:child_process");
-const { mediaSessionScript, browserScript, windowScript, amazonMusicScript } = require("./winscripts");
+const { mediaSessionScript, browserScript, windowScript, amazonMusicScript, typeTextScript, appVolumeScript, systemScript } = require("./winscripts");
+const os = require("node:os");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -148,6 +149,34 @@ function createActions(env = {}) {
       }
       if (r) delete r.dump;
       return r;
+    },
+    /** Text ins vorderste Fenster tippen (nicht in CommandWave selbst) */
+    async typeText({ text = "" }) {
+      if (!String(text)) throw new Error("typeText: text fehlt");
+      return powershellJson(typeTextScript(String(text).slice(0, 2000), env.skipPid || process.pid));
+    },
+    /** Lautstärke eines Programms: op up|down|set|mute|unmute|get, value 0..1, match = Prozessnamen (mit |) */
+    async appVolume({ match = "", op = "get", value = 0.2 }) {
+      if (!match) throw new Error("appVolume: match fehlt");
+      return powershellJson(appVolumeScript(match, op, value));
+    },
+    /** Systeminfo: Arbeitsspeicher, Laufwerk, CPU-Auslastung, Laufzeit (Node) + Akku/Temperatur (Windows) */
+    async systemInfo() {
+      const sample = () => os.cpus().reduce((a, c) => ((a.idle += c.times.idle), (a.total += Object.values(c.times).reduce((x, y) => x + y, 0)), a), { idle: 0, total: 0 });
+      const s1 = sample();
+      await new Promise((r) => setTimeout(r, 700));
+      const s2 = sample();
+      const cpu = Math.round(100 * (1 - (s2.idle - s1.idle) / Math.max(1, s2.total - s1.total)));
+      let disk = null;
+      try {
+        const st = fs.statfsSync((process.env.SystemDrive || "C:") + "\\");
+        disk = { free: st.bavail * st.bsize, total: st.blocks * st.bsize };
+      } catch {
+        // kein Laufwerk lesbar (z. B. Test unter Linux)
+      }
+      const win = platform === "win32" ? await powershellJson(systemScript()).catch(() => null) : null;
+      return { ok: true, memTotal: os.totalmem(), memFree: os.freemem(), cpu: win?.load ?? cpu, cpus: os.cpus().length, uptime: os.uptime(), disk,
+        battery: win?.hasBattery ? { percent: win.battery, charging: win.charging, remaining: win.remaining > 0 ? win.remaining : null } : null, temp: win?.temp ?? null };
     },
     async sequence({ steps = [] }, run) {
       for (const s of steps) {

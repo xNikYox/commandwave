@@ -291,4 +291,145 @@ function amazonMusicScript(query) {
   ].join("\n");
 }
 
-module.exports = { mediaSessionScript, browserScript, windowScript, amazonMusicScript, BROWSERS, TAB_KEYS, psq };
+/**
+ * Text ins vorderste Fenster tippen (CommandWave selbst wird übersprungen – dann das Fenster dahinter).
+ * Zeilenumbrüche werden Enter. Getippt wird über SendKeys (Sonderzeichen maskiert).
+ */
+function typeTextScript(text, skipPid = 0) {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+    "try {",
+    "  Add-Type -AssemblyName System.Windows.Forms",
+    "  Add-Type -Namespace CW -Name Ty -MemberDefinition @'",
+    '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
+    '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint c);',
+    '[DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
+    '[DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);',
+    '[DllImport("user32.dll")] public static extern void keybd_event(byte v, byte s, int f, int e);',
+    "'@",
+    `  $text = ${psq(text)}; $skip = ${Number(skipPid) || 0}`,
+    "  function PidOf($h) { $p = [uint32]0; $null = [CW.Ty]::GetWindowThreadProcessId($h, [ref]$p); $p }",
+    "  function IsApp($h) { [CW.Ty]::IsWindowVisible($h) -and [CW.Ty]::GetWindowTextLength($h) -gt 0 -and -not (([CW.Ty]::GetWindowLong($h, -20) -band 0x80) -ne 0) }",
+    "  $h = [CW.Ty]::GetForegroundWindow(); $n = 0",
+    "  while ($h -ne [IntPtr]::Zero -and $n -lt 500 -and ((PidOf $h) -eq $skip -or -not (IsApp $h))) { $h = [CW.Ty]::GetWindow($h, 2); $n++ }",
+    "  if ($h -eq [IntPtr]::Zero) { [pscustomobject]@{ ok = $false; error = 'kein Fenster' } | ConvertTo-Json -Compress; exit }",
+    "  [CW.Ty]::keybd_event(0x12, 0, 0, 0); [CW.Ty]::keybd_event(0x12, 0, 2, 0); $null = [CW.Ty]::SetForegroundWindow($h); Start-Sleep -Milliseconds 250",
+    "  $lines = $text -split \"`n\"",
+    "  for ($i = 0; $i -lt $lines.Count; $i++) {",
+    "    if ($lines[$i]) { [System.Windows.Forms.SendKeys]::SendWait([regex]::Replace($lines[$i], '[+^%~(){}\\[\\]]', '{$0}')) }",
+    "    if ($i -lt $lines.Count - 1) { [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') }",
+    "  }",
+    "  $name = (Get-Process -Id (PidOf $h) -ErrorAction SilentlyContinue).ProcessName",
+    "  [pscustomobject]@{ ok = $true; name = $name; chars = $text.Length } | ConvertTo-Json -Compress",
+    "} catch { [pscustomobject]@{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress }",
+  ].join("\n");
+}
+
+/** C#-Teil für den Windows-Lautstärkemixer (Core Audio: Sitzungen je Programm) */
+const MIXER_CS = String.raw`
+using System; using System.Collections.Generic; using System.Diagnostics; using System.Runtime.InteropServices;
+namespace CWMix {
+  [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom {}
+  [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IMMDeviceEnumerator {
+    int NotImpl1();
+    [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice dev);
+  }
+  [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IMMDevice {
+    [PreserveSig] int Activate(ref Guid iid, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o);
+  }
+  [Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IAudioSessionManager2 {
+    int NotImpl1(); int NotImpl2();
+    [PreserveSig] int GetSessionEnumerator(out IAudioSessionEnumerator e);
+  }
+  [Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IAudioSessionEnumerator {
+    [PreserveSig] int GetCount(out int n);
+    [PreserveSig] int GetSession(int i, out IAudioSessionControl2 s);
+  }
+  [Guid("bfb7ff88-7239-4fc9-8fa2-07c950be9c6d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IAudioSessionControl2 {
+    int GetState(out int s);
+    int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string n);
+    int N1(); int N2(); int N3(); int N4(); int N5(); int N6(); int N7();
+    int N8(); int N9();
+    [PreserveSig] int GetProcessId(out int pid);
+  }
+  [Guid("87CE5498-68D6-44E5-9215-6DA47EF883D8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface ISimpleAudioVolume {
+    [PreserveSig] int SetMasterVolume(float v, ref Guid ctx);
+    [PreserveSig] int GetMasterVolume(out float v);
+    [PreserveSig] int SetMute(bool m, ref Guid ctx);
+    [PreserveSig] int GetMute(out bool m);
+  }
+  public class Result { public bool ok; public string error; public int count; public int volume = -1; public bool muted; public string[] apps; }
+  public static class Mixer {
+    public static Result Run(string[] names, string op, float value) {
+      var r = new Result();
+      IMMDevice dev;
+      var en = (IMMDeviceEnumerator)(new MMDeviceEnumeratorCom());
+      if (en.GetDefaultAudioEndpoint(0, 1, out dev) != 0 || dev == null) { r.error = "kein Audiogerät"; return r; }
+      Guid iid = typeof(IAudioSessionManager2).GUID; object o;
+      if (dev.Activate(ref iid, 23, IntPtr.Zero, out o) != 0) { r.error = "Mixer nicht erreichbar"; return r; }
+      IAudioSessionEnumerator se; ((IAudioSessionManager2)o).GetSessionEnumerator(out se);
+      int n; se.GetCount(out n);
+      var seen = new List<string>();
+      for (int i = 0; i < n; i++) {
+        IAudioSessionControl2 c; se.GetSession(i, out c);
+        int pid; c.GetProcessId(out pid);
+        string pn = "";
+        try { if (pid != 0) pn = Process.GetProcessById(pid).ProcessName.ToLowerInvariant(); } catch {}
+        if (pn == "") continue;
+        if (!seen.Contains(pn)) seen.Add(pn);
+        bool hit = false;
+        foreach (var w in names) if (w.Length > 0 && (pn == w || pn.Contains(w) || pn.Replace(" ", "").Contains(w.Replace(" ", "")))) hit = true;
+        if (!hit) continue;
+        var v = (ISimpleAudioVolume)c; Guid g = Guid.Empty; float cur; v.GetMasterVolume(out cur); bool m; v.GetMute(out m);
+        float nv = cur;
+        if (op == "up") { nv = Math.Min(1f, cur + value); if (m) v.SetMute(false, ref g); m = false; }
+        else if (op == "down") nv = Math.Max(0f, cur - value);
+        else if (op == "set") { nv = Math.Max(0f, Math.Min(1f, value)); if (m && nv > 0) { v.SetMute(false, ref g); m = false; } }
+        else if (op == "mute") { v.SetMute(true, ref g); m = true; }
+        else if (op == "unmute") { v.SetMute(false, ref g); m = false; if (cur < 0.05f) nv = 0.5f; }
+        if (nv != cur) v.SetMasterVolume(nv, ref g);
+        r.count++; r.volume = (int)Math.Round(nv * 100); r.muted = m;
+      }
+      r.apps = seen.ToArray(); r.ok = r.count > 0;
+      if (!r.ok) r.error = "keine Wiedergabe";
+      return r;
+    }
+  }
+}`;
+
+/** Lautstärke einzelner Programme: op up|down|set|mute|unmute|get, value 0..1, names = Prozessnamen (mit |) */
+function appVolumeScript(names, op, value = 0.2) {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+    "try {",
+    "  Add-Type -TypeDefinition @'",
+    MIXER_CS,
+    "'@",
+    `  $r = [CWMix.Mixer]::Run(@(${psq(String(names).toLowerCase())}.Split('|') | Where-Object { $_ }), ${psq(op)}, [float]${Number(value) || 0})`,
+    "  [pscustomobject]@{ ok = $r.ok; error = $r.error; count = $r.count; volume = $r.volume; muted = $r.muted; apps = $r.apps } | ConvertTo-Json -Compress",
+    "} catch { [pscustomobject]@{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress }",
+  ].join("\n");
+}
+
+/** Akku und (falls Windows sie herausgibt) CPU-Temperatur */
+function systemScript() {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+    "try {",
+    "  Add-Type -AssemblyName System.Windows.Forms",
+    "  $p = [System.Windows.Forms.SystemInformation]::PowerStatus",
+    "  $temp = $null",
+    "  try { $t = Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop | Select-Object -First 1; if ($t) { $temp = [math]::Round($t.CurrentTemperature / 10 - 273.15) } } catch {}",
+    "  $load = $null; try { $load = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average } catch {}",
+    "  [pscustomobject]@{ ok = $true; battery = [int][math]::Round($p.BatteryLifePercent * 100); hasBattery = ($p.BatteryChargeStatus.ToString() -notmatch 'NoSystemBattery|Unknown'); charging = ($p.PowerLineStatus.ToString() -eq 'Online'); remaining = $p.BatteryLifeRemaining; temp = $temp; load = $load } | ConvertTo-Json -Compress",
+    "} catch { [pscustomobject]@{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress }",
+  ].join("\n");
+}
+
+module.exports = { mediaSessionScript, browserScript, windowScript, amazonMusicScript, typeTextScript, appVolumeScript, systemScript, MIXER_CS, BROWSERS, TAB_KEYS, psq };

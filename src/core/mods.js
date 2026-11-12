@@ -13,7 +13,8 @@ const path = require("node:path");
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const VERSION = /^\d+(\.\d+){0,3}([-+][0-9A-Za-z.]+)?$/;
-const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "window", "amazonMusic", "keys", "shell", "sequence", "none"];
+const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "window", "amazonMusic", "typeText", "appVolume", "keys", "shell", "sequence", "none"];
+const numbers = require("./numbers");
 
 /** mod.json prüfen → { mod } oder { error } */
 function validate(json, dirName) {
@@ -127,6 +128,14 @@ function makeApi(mod, base, host, commands, slots, info) {
     window: (op, match) => host.actions.window({ op, match }),
     /** Amazon Music: api.amazonMusic("blinding lights") sucht und spielt das erste Ergebnis (ab 1.5) */
     amazonMusic: (query) => host.actions.amazonMusic({ query }),
+    /** Text ins vorderste Fenster tippen: api.typeText("Hallo") (ab 1.6) */
+    typeText: (text) => host.actions.typeText({ text }),
+    /** Lautstärke eines Programms: api.appVolume("spotify", "down", 0.2) → { ok, volume, muted } (ab 1.6) */
+    appVolume: (match, op, value) => host.actions.appVolume({ match, op, value }),
+    /** Akku, Speicher, CPU, Laufwerk, Laufzeit (ab 1.6) */
+    systemInfo: () => host.actions.systemInfo({}),
+    /** Zahlen & Rechnen: api.numbers.evaluate("fünf meilen in kilometer", "de"), .slotValues("de", 100) (ab 1.6) */
+    numbers,
     notify: (title, body) => host.notify?.(title, body),
     log: (...a) => host.log?.(`[${mod.id}]`, ...a),
     /** kleiner Speicher je Mod (JSON) */
