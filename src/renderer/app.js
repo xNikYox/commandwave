@@ -426,9 +426,9 @@ cw.onAppUpdate(renderAppUpdate);
 /** Testmodus: Windows-Stimme spricht Testsätze → Erkennung je Sprache und mit beiden Sprachen gleichzeitig */
 async function audioTest() {
   const decode = async (url) => (await new AudioContext({ sampleRate: 16000 }).decodeAudioData(await (await fetch(url)).arrayBuffer())).getChannelData(0);
-  const recognize = (lang, pcm) => new Promise((resolve) => {
+  const recognize = (lang, pcm, words = true) => new Promise((resolve) => {
     const rec = new speech.models[lang].KaldiRecognizer(16000, JSON.stringify(state.grammars[lang]));
-    rec.setWords(true);
+    if (words) rec.setWords(true);
     const t0 = performance.now();
     rec.on("result", (m) => {
       const words = (m.result.result || []).filter((w) => w.word !== "[unk]");
@@ -446,6 +446,8 @@ async function audioTest() {
     const want = (await cw.match(a.text, a.lang))?.command || null;
     const own = await recognize(a.lang, pcm);
     const ownCmd = own.text ? (await cw.match(own.text, a.lang))?.command || null : null;
+    const plain = await recognize(a.lang, pcm, false); // Vergleich: ohne Wort-Sicherheiten
+    const plainCmd = plain.text ? (await cw.match(plain.text, a.lang))?.command || null : null;
     // beide Sprachen: wie in der App – passendster Treffer gewinnt
     const both = await Promise.all(["de", "en"].map((l) => recognize(l, pcm)));
     let pick = null;
@@ -454,12 +456,12 @@ async function audioTest() {
       const rank = m ? m.score + 0.15 * (b.conf ?? 0.7) : -1;
       if (!pick || rank > pick.rank) pick = { ...b, command: m?.command || null, rank };
     }
-    results.push({ said: a.text, lang: a.lang, want, heard: own.text, conf: own.conf && Math.round(own.conf * 100) / 100, ok: !!want && ownCmd === want, both: { lang: pick.lang, heard: pick.text, ok: !!want && pick.command === want } });
+    results.push({ said: a.text, lang: a.lang, want, heard: own.text, conf: own.conf && Math.round(own.conf * 100) / 100, ok: !!want && ownCmd === want, ohneWords: { heard: plain.text, ok: !!want && plainCmd === want }, both: { lang: pick.lang, heard: pick.text, ok: !!want && pick.command === want } });
   }
   const summary = {};
   for (const l of ["de", "en"]) {
     const r = results.filter((x) => x.lang === l);
-    summary[l] = { richtig: r.filter((x) => x.ok).length + "/" + r.length, mitBeidenSprachen: r.filter((x) => x.both.ok).length + "/" + r.length, spracheErkannt: r.filter((x) => x.both.lang === l).length + "/" + r.length };
+    summary[l] = { richtig: r.filter((x) => x.ok).length + "/" + r.length, ohneWords: r.filter((x) => x.ohneWords.ok).length + "/" + r.length, mitBeidenSprachen: r.filter((x) => x.both.ok).length + "/" + r.length, spracheErkannt: r.filter((x) => x.both.lang === l).length + "/" + r.length };
   }
   return { summary, results };
 }
