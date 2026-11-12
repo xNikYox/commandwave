@@ -9,7 +9,8 @@ const { createActions } = require("./core/actions");
 const { seedDefaults } = require("./core/mods");
 const updater = require("./core/updater");
 const { START_APPS_CMD, toSlots } = require("./core/apps");
-const { execFile } = require("node:child_process");
+const { execFile, spawn } = require("node:child_process");
+const selfUpdate = require("./core/selfupdate");
 
 /* Unerwartete Fehler: ins Protokoll (…\CommandWave\fehler.log) statt Absturz-Fenster; im Test auch ausgeben */
 const FULLTEST = process.argv.includes("--fulltest");
@@ -33,6 +34,8 @@ if (!app.requestSingleInstanceLock()) {
 app.setAppUserModelId("de.xnikyox.commandwave");
 // kleines Fenster ohne 3D: ohne Grafikkarten-Prozess spart CommandWave Speicher und Energie
 app.disableHardwareAcceleration();
+// Netzwerkdienst nicht abschotten: manche Sicherheitsprogramme sperren ihn sonst (net::ERR_NETWORK_ACCESS_DENIED bei Updates)
+app.commandLine.appendSwitch("disable-features", "NetworkServiceSandbox");
 
 // Eigenes Protokoll cw:// für Oberfläche, Erkennung und Sprachmodell (fetch/Worker brauchen eine echte Herkunft)
 protocol.registerSchemesAsPrivileged([{ scheme: "cw", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
@@ -245,10 +248,44 @@ const updateLog = (level) => (...a) => {
 
 function installUpdateNow() {
   if (!autoUpdater || appUpdate.status !== "ready" || sessionEnding) return false;
-  updateLog("info")("Installiere Version", appUpdate.version);
+  updateLog("info")("Installiere Version", appUpdate.version, appUpdate.file ? "(Ersatzweg)" : "");
   quitting = true;
+  if (appUpdate.file) {
+    // selbst geladener Installer: still installieren, danach CommandWave wieder starten
+    spawn(appUpdate.file, ["/S", "--updated", "--force-run"], { detached: true, stdio: "ignore" }).unref();
+    setTimeout(() => app.exit(0), 300);
+    return true;
+  }
   autoUpdater.quitAndInstall(true, true); // still installieren, danach wieder starten
   return true;
+}
+
+function setAppUpdate(p) {
+  Object.assign(appUpdate, p);
+  send("appUpdate", appUpdate);
+}
+const isNetError = (e) => /net::ERR_|ENOTFOUND|ECONN|ETIMEDOUT|EAI_AGAIN/.test(String(e?.message || e));
+
+/** Ersatzweg, wenn electron-updater nicht ins Netz darf: über Node prüfen und laden */
+let fallbackBusy = false;
+async function fallbackUpdate(set) {
+  if (fallbackBusy || appUpdate.status === "ready") return;
+  fallbackBusy = true;
+  try {
+    updateLog("info")("Prüfe über den Ersatzweg (Node)");
+    const info = await selfUpdate.check(app.getVersion());
+    if (!info) return set({ status: "current", error: null });
+    set({ status: "downloading", version: info.version, percent: 0, error: null });
+    const file = await selfUpdate.download(info, path.join(app.getPath("temp"), "commandwave-update"), { onProgress: (p) => p % 5 === 0 && set({ percent: p }) });
+    set({ status: "ready", version: info.version, file });
+    notify("CommandWave-Update bereit", `Version ${info.version} wird installiert, sobald du CommandWave ein paar Minuten nicht benutzt.`);
+    buildTray();
+  } catch (e) {
+    updateLog("error")("Ersatzweg:", e);
+    set({ status: "error", error: String(e?.message || e).slice(0, 200) });
+  } finally {
+    fallbackBusy = false;
+  }
 }
 
 function setupAppUpdates() {
@@ -257,10 +294,7 @@ function setupAppUpdates() {
   autoUpdater.logger = { info: updateLog("info"), warn: updateLog("warn"), error: updateLog("error"), debug: () => {} };
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
-  const set = (p) => {
-    Object.assign(appUpdate, p);
-    send("appUpdate", appUpdate);
-  };
+  const set = setAppUpdate;
   autoUpdater.on("checking-for-update", () => set({ status: "checking", error: null }));
   autoUpdater.on("update-available", (i) => set({ status: "downloading", version: i.version, percent: 0 }));
   autoUpdater.on("update-not-available", () => set({ status: "current" }));
@@ -272,6 +306,9 @@ function setupAppUpdates() {
   });
   autoUpdater.on("error", (e) => {
     updateLog("error")(e);
+    if (appUpdate.file) return; // Ersatzweg hat schon geladen
+    // Netzwerk-Fehler von Chromium (z. B. ERR_NETWORK_ACCESS_DENIED): selbst über Node versuchen
+    if (isNetError(e)) return fallbackUpdate(set);
     set({ status: "error", error: String(e?.message || e).slice(0, 200) });
   });
   const check = () => settings.appAutoUpdate && autoUpdater.checkForUpdates().catch(() => {});
@@ -587,7 +624,16 @@ ipcMain.handle("window:hide", () => alive() && win.hide());
 ipcMain.handle("hotkey:pause", () => globalShortcut.unregisterAll());
 ipcMain.handle("hotkey:resume", () => (hotkeyError = registerHotkey()));
 ipcMain.handle("app:update", () => appUpdate);
-ipcMain.handle("app:checkUpdate", () => (autoUpdater ? autoUpdater.checkForUpdates().then(() => appUpdate).catch((e) => ({ ...appUpdate, status: "error", error: e.message })) : { status: "dev" }));
+ipcMain.handle("app:checkUpdate", async () => {
+  if (!autoUpdater) return { status: "dev" };
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (e) {
+    if (!isNetError(e)) return { ...appUpdate, status: "error", error: e.message };
+    await fallbackUpdate(setAppUpdate); // Chromium darf nicht ins Netz → über Node
+  }
+  return appUpdate;
+});
 ipcMain.handle("app:installUpdate", () => installUpdateNow());
 // Testmodus: Overlay öffnen und prüfen, ob es lädt und Meldungen anzeigt
 ipcMain.handle("overlay:test", () => new Promise((resolve) => {

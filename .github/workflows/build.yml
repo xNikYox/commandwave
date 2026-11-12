@@ -25,6 +25,8 @@ jobs:
         run: npm run model
       - name: Tests
         run: npm test
+      - name: App-Update über den Ersatzweg (Node, echtes Release)
+        run: node test/selfupdate-live.js
       - name: Windows-Praxistest (Aktionen)
         run: node test/windows-smoke.js
       - name: App-Test (Electron, Sprachmodell, Erkenner)
