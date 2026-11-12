@@ -112,3 +112,13 @@ test("Vorschau (Mikrofon-Test) führt nichts aus", () => {
   assert.deepEqual(calls, []);
   assert.equal(a.preview([]).command, null);
 });
+
+test("eigene Wörter: Namen in Suchbegriffen ersetzen (DoctorBenx statt „deer balance“)", async () => {
+  assert.equal(P.applyWords("deer balance", { "deer balance": { key: "DoctorBenx" } }), "DoctorBenx");
+  assert.equal(P.applyWords("neue videos von dear balance", { "deer balance": { key: "DoctorBenx" }, "dear balance": { key: "DoctorBenx" } }), "neue videos von DoctorBenx");
+  assert.equal(P.applyWords("deer balances", { "deer balance": { key: "DoctorBenx" } }), "deer balances"); // nur ganze Wörter
+  const { a, calls } = setup({ ask: async () => "deer balance" });
+  a.setAliases({ _woerter: { "deer balance": { key: "DoctorBenx", lang: "de" } } });
+  assert.equal((await a.handle("suche auf youtube")).say, "Ich suche „DoctorBenx“ auf YouTube.");
+  assert.deepEqual(calls, ["open https://www.youtube.com/results?search_query=DoctorBenx"]);
+});

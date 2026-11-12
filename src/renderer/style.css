@@ -88,7 +88,7 @@ body[data-mode="error"] .status { color: var(--bad); }
 .card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 10px 0 4px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
 .card h3 + .row { border-top: 0; }
-.row select, .key, .addsrc input, .addsrc select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; max-width: 230px; outline: none; }
+.row select, .row input:not([type]), .key, .addsrc input, .addsrc select { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; max-width: 230px; outline: none; }
 .key { text-align: center; cursor: pointer; caret-color: transparent; width: 170px; }
 .key:focus { border-color: var(--a); }
 .row input[type=range] { width: 160px; accent-color: var(--a); }

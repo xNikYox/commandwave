@@ -16,6 +16,7 @@ const LANGS = ["de", "en"];
 const SURE = 0.66; // ab hier wird ein Befehl direkt ausgeführt
 const NEAR = 0.45; // darunter: unbekannt; dazwischen: „Meintest du …?“
 const PENDING_MS = 30000;
+const WORDS = "_woerter"; // gelernte eigene Wörter (für frei erkannten Text, z. B. Suchbegriffe)
 
 class Assistant {
   /** opts = { modsDir, actions, dataDir, say, notify, log, disabled: [] } */
@@ -145,7 +146,11 @@ class Assistant {
     const c = m.command;
     const ctx = { text: heard, slots: m.slots, score: m.score, lang, say: this.opts.say, fill: (t) => P.fill(t, m.slots, {}, lang),
       // Rückfrage mit freier Antwort (z. B. „Was soll ich suchen?“) → Promise<Text | null>
-      ask: (question) => (this.opts.ask ? this.opts.ask(String(question), lang) : Promise.resolve(null)) };
+      // eigene Wörter (Namen wie „DoctorBenx“) werden in der Antwort eingesetzt
+      ask: async (question) => {
+        const t = this.opts.ask ? await this.opts.ask(String(question), lang) : null;
+        return t ? P.applyWords(t, this.aliases[WORDS]) : t;
+      } };
     try {
       let say = c.say != null ? P.fill(c.say, m.slots, {}, lang) : null;
       if (c.handler) {
@@ -179,4 +184,4 @@ function fillDeep(v, slots) {
   return v;
 }
 
-module.exports = { Assistant, UNKNOWN, FAILED, NOTHING, TEXT, LANGS, SURE, NEAR, fillDeep };
+module.exports = { Assistant, UNKNOWN, FAILED, NOTHING, TEXT, LANGS, SURE, NEAR, WORDS, fillDeep };

@@ -446,24 +446,35 @@ $("#micTest").onclick = async () => {
 };
 
 /* ---------------- Aussprache lernen ---------------- */
-const SLOT_NAMES = { app: "App", seite: "Webseite", ordner: "Ordner", player: "Musik-App", suchseite: "Suchseite", einstellung: "Windows-Einstellung" };
+const SLOT_NAMES = { app: "App", seite: "Webseite", ordner: "Ordner", player: "Musik-App", suchseite: "Suchseite", einstellung: "Windows-Einstellung", _woerter: "Eigenes Wort (z. B. Name für die Suche)" };
+const WORDS = "_woerter";
 function renderLearn() {
   const learn = state.learn || {};
   const sel = $("#learnSlot");
   const cur = sel.value || "app";
-  sel.innerHTML = Object.keys(learn).map((k) => `<option value="${esc(k)}"${k === cur ? " selected" : ""}>${esc(SLOT_NAMES[k] || k)}</option>`).join("");
+  sel.innerHTML = [...Object.keys(learn), WORDS].map((k) => `<option value="${esc(k)}"${k === cur ? " selected" : ""}>${esc(SLOT_NAMES[k] || k)}</option>`).join("");
   renderLearnKeys();
   $("#learnLangRow").hidden = state.settings.language !== "both";
   $("#learnLang").value = primaryLang();
-  const rows = Object.entries(state.aliases || {}).flatMap(([slot, list]) => Object.entries(list).map(([heard, a]) => ({ slot, heard, ...a })));
-  $("#aliases").innerHTML = rows.map((r) => `<div class="alias"><span>„${esc(r.heard)}“ → <b>${esc((learn[r.slot] || []).find(([k]) => k === r.key)?.[1] || r.key)}</b> <span class="muted">(${esc(SLOT_NAMES[r.slot] || r.slot)}${r.lang === "en" ? ", English" : ""})</span></span>
-    <button class="btn" data-unalias="${esc(r.slot)}|${esc(r.heard)}">Entfernen</button></div>`).join("");
+  // gelernte Varianten je Wert zusammenfassen: „deer balance“, „dear balance“ → DoctorBenx
+  const groups = new Map();
+  for (const [slot, list] of Object.entries(state.aliases || {})) for (const [heard, a] of Object.entries(list)) {
+    const id = slot + "|" + a.key;
+    if (!groups.has(id)) groups.set(id, { slot, key: a.key, lang: a.lang, heard: [] });
+    groups.get(id).heard.push(heard);
+  }
+  const rows = [...groups.values()];
+  $("#aliases").innerHTML = rows.map((r, i) => `<div class="alias"><span>${r.heard.map((h) => "„" + esc(h) + "“").join(", ")} → <b>${esc((learn[r.slot] || []).find(([k]) => k === r.key)?.[1] || r.key)}</b> <span class="muted">(${esc(r.slot === WORDS ? "Wort" : SLOT_NAMES[r.slot] || r.slot)}${r.lang === "en" ? ", English" : ""})</span></span>
+    <button class="btn" data-unalias="${i}">Entfernen</button></div>`).join("");
   for (const b of $$("[data-unalias]")) b.onclick = async () => {
-    const [slot, heard] = b.dataset.unalias.split("|");
-    await cw.removeAlias({ slot, heard });
+    const r = rows[Number(b.dataset.unalias)];
+    for (const heard of r.heard) await cw.removeAlias({ slot: r.slot, heard });
   };
 }
 function renderLearnKeys() {
+  const word = $("#learnSlot").value === WORDS;
+  $("#learnKeyRow").hidden = word;
+  $("#learnWordRow").hidden = !word;
   const list = (state.learn || {})[$("#learnSlot").value] || [];
   const cur = $("#learnKey").value;
   $("#learnKey").innerHTML = [...list].sort((a, b) => a[1].localeCompare(b[1], "de")).map(([k, label]) => `<option value="${esc(k)}"${k === cur ? " selected" : ""}>${esc(label)}${label.toLowerCase() !== k ? ` (${esc(k)})` : ""}</option>`).join("");
@@ -472,11 +483,12 @@ $("#learnSlot").onchange = renderLearnKeys;
 $("#learnGo").onclick = async () => {
   if (busy || !ready) return;
   const slot = $("#learnSlot").value;
-  const key = $("#learnKey").value;
-  const label = $("#learnKey").selectedOptions[0]?.textContent.replace(/ \(.*\)$/, "") || key;
+  const word = slot === WORDS;
+  const key = word ? $("#learnWord").value.trim() : $("#learnKey").value;
+  const label = word ? key : $("#learnKey").selectedOptions[0]?.textContent.replace(/ \(.*\)$/, "") || key;
   const lang = state.settings.language === "both" ? $("#learnLang").value : primaryLang();
   const t = $("#learnText");
-  if (!slot || !key) return;
+  if (!slot || !key) return word && ($("#learnText").textContent = "Bitte zuerst das Wort eintippen.");
   busy = true;
   $("#learnGo").disabled = true;
   try {
@@ -492,12 +504,9 @@ $("#learnGo").onclick = async () => {
     }
     if (!got.length) t.textContent = "Nichts gehört – nochmal versuchen.";
     else {
-      // was am häufigsten verstanden wurde
-      const count = new Map();
-      for (const g of got) count.set(g, (count.get(g) || 0) + 1);
-      const heard = [...count].sort((a, b) => b[1] - a[1])[0][0];
-      const r = await cw.addAlias({ slot, key, heard, lang });
-      t.textContent = r.same ? `„${label}“ verstehe ich schon richtig.` : r.ok ? `Gelernt: „${r.heard}“ = ${label}. (Gehört: ${got.map((g) => "„" + g + "“").join(", ")})` : "Das ging nicht – bitte nur den Namen sagen (höchstens 4 Wörter).";
+      // alle verschiedenen Varianten merken – die Erkennung hört einen unbekannten Namen nicht immer gleich
+      const r = await cw.addAlias({ slot, key, heard: got, lang });
+      t.textContent = r.ok ? `Gelernt: ${r.heard.map((h) => "„" + h + "“").join(", ")} = ${label}.` : r.same ? `„${label}“ verstehe ich schon richtig.` : "Das ging nicht – bitte nur den Namen sagen (höchstens 4 Wörter).";
     }
   } catch (e) {
     t.textContent = micError(e);

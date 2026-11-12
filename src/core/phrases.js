@@ -222,6 +222,21 @@ function yesNo(text) {
   return null;
 }
 
+/**
+ * Eigene Wörter in frei erkanntem Text einsetzen: words = { "deer balance": { key: "DoctorBenx" } }
+ * (das Sprachmodell kennt Namen nicht und hört etwas Ähnliches – das wird durch das gelernte Wort ersetzt)
+ */
+function applyWords(text, words = {}) {
+  let out = normalize(text);
+  if (!out) return out;
+  const list = Object.entries(words || {}).filter(([h, w]) => h && w?.key).sort((a, b) => b[0].length - a[0].length);
+  for (const [heard, w] of list) {
+    const re = new RegExp(`(^|\\s)${normalize(heard).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`, "g");
+    out = out.replace(re, (_m, pre) => pre + "\u0000" + w.key + "\u0000");
+  }
+  return out.replace(/\u0000/g, "");
+}
+
 /** Gefundene Variante als sprechbarer Satz („öffne die app editor“) – für „Meintest du …?“ */
 function sayable(m) {
   if (!m || !m.variant) return "";
@@ -298,4 +313,4 @@ function fill(template, slots = {}, extra = {}, lang = "de") {
 
 const capitalize = (s) => String(s).replace(/^\p{L}/u, (c) => c.toUpperCase());
 
-module.exports = { YES, NO, yesNo, sayable, normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };
+module.exports = { YES, NO, yesNo, sayable, applyWords, normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };

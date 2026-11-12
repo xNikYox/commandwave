@@ -4,7 +4,7 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, nativeImage, No
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { Assistant } = require("./core/assistant");
+const { Assistant, WORDS } = require("./core/assistant");
 const { createActions } = require("./core/actions");
 const { seedDefaults } = require("./core/mods");
 const updater = require("./core/updater");
@@ -565,15 +565,21 @@ ipcMain.handle("confirm", (_e, text) => (touch(), assistant.answerConfirm(String
 ipcMain.handle("preview", (_e, cands) => assistant.preview(cands));
 ipcMain.handle("ask:answer", (_e, id, text) => asks.get(id)?.(text ? String(text) : null));
 // Aussprache lernen: „gehört“ ist ein weiterer Name für einen vorhandenen Wert
+// heard: ein Text oder mehrere (alle Varianten, die beim Vorsprechen verstanden wurden)
+// slot "_woerter": eigenes Wort (key = so wird es geschrieben, z. B. „DoctorBenx“) – für Suchbegriffe
 ipcMain.handle("alias:add", (_e, { slot, key, heard, lang }) => {
-  const h = String(heard || "").toLowerCase().replace(/\[unk\]/g, " ").replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
-  if (!LEARNABLE.includes(slot) || !assistant.slots[slot]?.[key] || !h || h.split(" ").length > 4) return { ok: false, error: "ungültig" };
-  if (h === key) return { ok: false, same: true };
-  const a = { ...assistant.aliases, [slot]: { ...(assistant.aliases[slot] || {}), [h]: { key, lang: lang === "en" ? "en" : "de" } } };
+  const norm = (t) => String(t || "").toLowerCase().replace(/\[unk\]/g, " ").replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim();
+  const word = slot === WORDS;
+  if (word) key = String(key || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 40);
+  const list = [...new Set([].concat(heard || []).map(norm))].filter((h) => h && h.split(" ").length <= 4 && h !== norm(key));
+  if (!(word ? key : LEARNABLE.includes(slot) && assistant.slots[slot]?.[key])) return { ok: false, error: "ungültig" };
+  if (!list.length) return { ok: false, same: [].concat(heard || []).some((h) => norm(h) === norm(key)) };
+  const entries = Object.fromEntries(list.map((h) => [h, { key, lang: lang === "en" ? "en" : "de" }]));
+  const a = { ...assistant.aliases, [slot]: { ...(assistant.aliases[slot] || {}), ...entries } };
   saveAliases(a);
   assistant.setAliases(a);
   send("mods", modsState());
-  return { ok: true, heard: h };
+  return { ok: true, heard: list };
 });
 ipcMain.handle("alias:remove", (_e, { slot, heard }) => {
   const a = { ...assistant.aliases, [slot]: { ...(assistant.aliases[slot] || {}) } };

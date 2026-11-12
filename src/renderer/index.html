@@ -74,9 +74,10 @@
       </div>
       <div class="card">
         <h3>Aussprache lernen</h3>
-        <p class="muted small">Versteht CommandWave einen Namen nicht (z. B. eine App), sprich ihn hier dreimal vor. Danach erkennt er ihn so, wie du ihn sagst.</p>
+        <p class="muted small">Versteht CommandWave einen Namen nicht (z. B. eine App oder einen YouTuber für die Suche), sprich ihn hier dreimal vor. Danach erkennt er ihn so, wie du ihn sagst.</p>
         <label class="row"><span>Art</span><select id="learnSlot"></select></label>
-        <label class="row"><span>Name</span><select id="learnKey"></select></label>
+        <label class="row" id="learnKeyRow"><span>Name</span><select id="learnKey"></select></label>
+        <label class="row" id="learnWordRow" hidden><span>Wort<small class="sub">So, wie es geschrieben wird – z. B. ein Name für die Suche</small></span><input id="learnWord" placeholder="z. B. DoctorBenx" maxlength="40" autocomplete="off"></label>
         <label class="row" id="learnLangRow"><span>Sprache</span><select id="learnLang"><option value="de">Deutsch</option><option value="en">English</option></select></label>
         <div class="row"><span class="muted small" id="learnText"></span><button class="btn primary" id="learnGo">Vorsprechen</button></div>
         <div id="aliases"></div>
