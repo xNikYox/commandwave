@@ -103,10 +103,11 @@
     }
 
     /**
-     * Aktivierungswort: Mikrofon bleibt offen, ein winziger Erkenner kennt nur das Wort (alles andere ist „[unk]“).
-     * Erst wenn nach dem Wort eine kurze Pause kommt und es sicher erkannt wurde, wird onWake() aufgerufen.
+     * Aktivierungswort: Mikrofon bleibt offen, ein eigener Erkenner kennt das Wort und – als Konkurrenz – die Befehle.
+     * So wird normales Sprechen als Befehl (oder „[unk]“) erkannt statt fälschlich als Aktivierungswort.
+     * Ausgelöst wird nur, wenn ein Satz mit dem Wort beginnt: onWake(rest) – rest = gleich mitgesagter Befehl oder "".
      */
-    async startWake({ lang = "de", phrase = "hey wave", deviceId = "", onWake = () => {}, minConf = 0.6 } = {}) {
+    async startWake({ lang = "de", phrase = "hey wave", deviceId = "", onWake = () => {}, minConf = 0.6, distractors = [] } = {}) {
       this.stopWake();
       if (!this.models[lang]) throw new Error("Sprachmodell " + lang + " nicht geladen");
       const w = { stopped: false };
@@ -120,10 +121,11 @@
       const src = ctx.createMediaStreamSource(stream);
       const node = new AudioWorkletNode(ctx, "cw-capture");
       src.connect(node);
-      const rec = new this.models[lang].KaldiRecognizer(SAMPLE_RATE, JSON.stringify(Speech.wakeGrammar(phrase)));
+      const rec = new this.models[lang].KaldiRecognizer(SAMPLE_RATE, JSON.stringify(Speech.wakeGrammar(phrase, distractors)));
       rec.setWords(true);
       rec.on("result", (m) => {
-        if (!w.stopped && Speech.isWake(m, phrase, minConf)) onWake();
+        const hit = !w.stopped && Speech.wakeMatch(m, phrase, minConf);
+        if (hit) onWake(hit.rest, hit.conf);
       });
       node.port.onmessage = (e) => {
         if (w.stopped || this.session) return; // während normalem Zuhören nicht doppelt rechnen
@@ -157,18 +159,24 @@
       }
     }
 
-    /** Grammatik fürs Aktivierungswort */
-    static wakeGrammar(phrase) {
-      return [phrase, "[unk]"];
+    /** Grammatik fürs Aktivierungswort: das Wort, das Wort + Befehl, und die Befehle allein als Konkurrenz */
+    static wakeGrammar(phrase, distractors = []) {
+      const cmds = distractors.filter((d) => d && d !== "[unk]");
+      return [...new Set([phrase, ...cmds.slice(0, 400).map((c) => phrase + " " + c), ...cmds, "[unk]"])];
     }
 
-    /** Ergebnis des Wort-Erkenners → war es das Aktivierungswort (sicher genug)? */
+    /** Ergebnis des Wort-Erkenners → { rest, conf } wenn der Satz sicher mit dem Aktivierungswort beginnt, sonst null */
+    static wakeMatch(m, phrase, minConf = 0.6) {
+      const words = m.result?.result || [];
+      const want = phrase.split(" ");
+      if (words.length < want.length || want.some((w, i) => words[i].word !== w)) return null;
+      const conf = want.reduce((a, _w, i) => a + (words[i].conf ?? 1), 0) / want.length;
+      if (conf < minConf) return null;
+      return { rest: clean(words.slice(want.length).map((x) => x.word).join(" ")), conf };
+    }
+
     static isWake(m, phrase, minConf = 0.6) {
-      const words = (m.result?.result || []).filter((x) => x.word !== "[unk]");
-      const text = clean(m.result?.text);
-      if (!text.endsWith(phrase)) return false;
-      const conf = words.length ? words.reduce((a, x) => a + (x.conf ?? 1), 0) / words.length : 0;
-      return conf >= minConf;
+      return !!Speech.wakeMatch(m, phrase, minConf);
     }
 
     /**

@@ -78,6 +78,21 @@ async function listen() {
   startWake();
 }
 
+/** „Hey Wave, öffne Editor“ in einem Satz: Befehl gleich ausführen (wie nach dem Zuhören) */
+async function runHeard(heard) {
+  if (busy) return;
+  busy = true;
+  speech.stopWake();
+  try {
+    const sure = heard.filter((r) => r.conf == null || r.conf >= MIN_CONF);
+    await answer(sure.length ? await cw.commandMulti(sure) : await cw.commandMulti(heard, { unsure: true }), heard.map((x) => x.text).join(" / "));
+  } catch (e) {
+    setStatus("Fehler: " + e.message, "error");
+  }
+  busy = false;
+  startWake();
+}
+
 /** „Meintest du …?“ – Frage vorlesen, Ja/Nein hören, dann ausführen (oder nicht) */
 async function confirmFlow(r) {
   const heard = await hear({ lang: r.lang, maxSeconds: 4 });
@@ -120,7 +135,7 @@ async function startWake() {
   try {
     await ensureModels();
     const lang = speech.models[primaryLang()] ? primaryLang() : Object.keys(speech.models)[0];
-    await speech.startWake({ lang, phrase: s.wakeWord || "hey wave", deviceId: s.micId, onWake: () => listen() });
+    await speech.startWake({ lang, phrase: s.wakeWord || "hey wave", deviceId: s.micId, distractors: state.grammars?.[lang] || [], onWake: (rest, conf) => (rest ? runHeard([{ lang, text: rest, conf }]) : listen()) });
   } catch (e) {
     setStatus("Aktivierungswort: " + micError(e), "error");
   }
@@ -656,30 +671,33 @@ async function wakeFreeTest() {
     rec.retrieveFinalResult();
   });
   const wake = async (lang, phrase, pcm) => {
-    const rec = new speech.models[lang].KaldiRecognizer(16000, JSON.stringify(Speech.wakeGrammar(phrase)));
+    const rec = new speech.models[lang].KaldiRecognizer(16000, JSON.stringify(Speech.wakeGrammar(phrase, state.grammars[lang])));
     rec.setWords(true);
     const got = await feed(rec, pcm);
-    return { fired: got.some((m) => Speech.isWake(m, phrase)), heard: got.map((m) => m.result.text).filter(Boolean).join(" | ") };
+    const hit = got.map((m) => Speech.wakeMatch(m, phrase)).find(Boolean);
+    return { fired: !!hit, rest: hit?.rest, conf: hit && Math.round(hit.conf * 100) / 100, heard: got.map((m) => m.result.text).filter(Boolean).join(" | ") };
   };
   const audio = state.audio || [];
   const out = { wake: [], falseAlarms: [], free: [] };
   for (const a of audio.filter((x) => x.kind === "wake")) {
     const pcm = await decode(a.url);
-    for (const lang of ["de", "en"]) out.wake.push({ said: a.text, lang, ...(await wake(lang, a.text, pcm)) });
+    const phrase = a.wakeWord || a.text;
+    for (const lang of ["de", "en"]) out.wake.push({ said: a.text, lang, ...(await wake(lang, phrase, pcm)) });
   }
   // Fehlalarme: normale Befehle dürfen „hey wave“ nicht auslösen
-  for (const a of [...audio.filter((x) => x.kind === "command" && x.lang === "de").slice(0, 8), ...audio.filter((x) => x.kind === "command" && x.lang === "en").slice(0, 8)]) {
+  for (const a of audio.filter((x) => x.kind === "command")) {
     const pcm = await decode(a.url);
     const r = await wake(a.lang, "hey wave", pcm);
     if (r.fired) out.falseAlarms.push({ said: a.text, heard: r.heard });
   }
-  for (const a of audio.filter((x) => x.kind === "free" || (x.kind === "command" && x.lang === "en")).slice(0, 6)) {
+  for (const a of [...audio.filter((x) => x.kind === "free"), ...audio.filter((x) => x.kind === "command" && x.lang === "en").slice(0, 4)]) {
     const rec = speech.freeRecognizer(a.lang);
     const got = await feed(rec, await decode(a.url));
     out.free.push({ said: a.text, heard: got.map((m) => m.result.text).filter(Boolean).join(" ") });
   }
   out.summary = { wakeEn: out.wake.filter((w) => w.lang === "en" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "en").length,
-    wakeDe: out.wake.filter((w) => w.lang === "de" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "de").length, falseAlarms: out.falseAlarms.length,
+    wakeDe: out.wake.filter((w) => w.lang === "de" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "de").length,
+    falseAlarms: out.falseAlarms.length + "/" + audio.filter((x) => x.kind === "command").length,
     freeRichtig: out.free.filter((f) => f.heard === f.said).length + "/" + out.free.length };
   return out;
 }

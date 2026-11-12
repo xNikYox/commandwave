@@ -502,13 +502,14 @@ async function smokeExtras() {
   fs.mkdirSync(dir, { recursive: true });
   // dazu: Aktivierungswort (muss auslösen) und freie Sätze (für Suche/Aussprache, ohne Befehlsliste)
   const all = [...SMOKE_SENTENCES.map((t) => ({ text: t, lang: "de" })), ...SMOKE_SENTENCES_EN.map((t) => ({ text: t, lang: "en" })),
-    { text: "hey wave", lang: "en", kind: "wake" }, { text: "hey computer", lang: "en", kind: "wake" }, { text: "funny cat videos", lang: "en", kind: "free" }, { text: "weather in berlin tomorrow", lang: "en", kind: "free" }];
-  for (const [i, { text, lang, kind }] of all.entries()) {
+    { text: "hey wave", lang: "en", kind: "wake" }, { text: "hey computer", lang: "en", kind: "wake" },
+    { text: "hey wave what time is it", lang: "en", kind: "wake", wakeWord: "hey wave" }, { text: "hey wave", lang: "de", kind: "wake" }, { text: "funny cat videos", lang: "en", kind: "free" }, { text: "weather in berlin tomorrow", lang: "en", kind: "free" }];
+  for (const [i, { text, lang, kind, wakeWord }] of all.entries()) {
     const file = path.join(dir, `satz${i}.wav`);
     const ps = "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
       `$f = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono); $s.SetOutputToWaveFile('${file.replace(/'/g, "''")}', $f); $s.Speak('${text}'); $s.Dispose()`;
     await new Promise((r) => execFile("powershell.exe", ["-NoProfile", "-Command", ps], { windowsHide: true, timeout: 30000 }, r));
-    if (fs.existsSync(file)) out.audio.push({ text, lang, kind: kind || "command", url: `cw://app/testaudio/satz${i}.wav` });
+    if (fs.existsSync(file)) out.audio.push({ text, lang, kind: kind || "command", wakeWord, url: `cw://app/testaudio/satz${i}.wav` });
   }
   return out;
 }
