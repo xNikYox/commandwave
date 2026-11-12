@@ -9,7 +9,8 @@
 //   sequence mehrere Schritte            { "type": "sequence", "steps": [ {…}, {…} ] }
 //   say/none nur antworten
 const { spawn } = require("node:child_process");
-const { mediaSessionScript, browserScript, windowScript } = require("./winscripts");
+const { mediaSessionScript, browserScript, windowScript, amazonMusicScript } = require("./winscripts");
+const fs = require("node:fs");
 const path = require("node:path");
 
 /** Virtuelle Tasten für Lautstärke und Musik */
@@ -132,6 +133,21 @@ function createActions(env = {}) {
     /** Fenster: op minimize|maximize|restore|left|right|desktop|focus|list; match = App-Namen (mit |) für focus */
     async window({ op = "minimize", match = "" }) {
       return powershellJson(windowScript(op, match, env.skipPid || process.pid));
+    },
+    /** Amazon Music: Lied/Künstler/Playlist suchen und abspielen → { ok, clicked } oder { ok: false, step, error } */
+    async amazonMusic({ query = "" }) {
+      if (!String(query).trim()) throw new Error("amazonMusic: query fehlt");
+      const r = await powershellJson(amazonMusicScript(String(query).slice(0, 100)));
+      // nicht gefunden: Liste der Bedienelemente fürs Anpassen ins Protokoll (…\CommandWave\amazon-music.log)
+      if (r && r.dump && env.diagDir) {
+        try {
+          fs.appendFileSync(path.join(env.diagDir, "amazon-music.log"), `[${new Date().toISOString()}] ${r.step}: ${r.error} – Suche „${query}“\n${[].concat(r.dump).join("\n")}\n\n`);
+        } catch {
+          // nicht schreibbar
+        }
+      }
+      if (r) delete r.dump;
+      return r;
     },
     async sequence({ steps = [] }, run) {
       for (const s of steps) {

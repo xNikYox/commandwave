@@ -134,6 +134,7 @@ function ask(question, lang) {
 const actions = createActions({
   openExternal: (u) => shell.openExternal(u),
   openPath: (p) => shell.openPath(p),
+  diagDir: DATA,
 });
 const assistant = new Assistant({
   modsDir: MODS_DIR,

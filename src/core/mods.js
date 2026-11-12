@@ -13,7 +13,7 @@ const path = require("node:path");
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const VERSION = /^\d+(\.\d+){0,3}([-+][0-9A-Za-z.]+)?$/;
-const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "window", "keys", "shell", "sequence", "none"];
+const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "window", "amazonMusic", "keys", "shell", "sequence", "none"];
 
 /** mod.json prüfen → { mod } oder { error } */
 function validate(json, dirName) {
@@ -125,6 +125,8 @@ function makeApi(mod, base, host, commands, slots, info) {
     browser: (op, match, all) => host.actions.browser({ op, match, all }),
     /** Fenster: api.window("minimize"), api.window("focus", "notepad|editor") → { ok, name, … } (ab 1.4) */
     window: (op, match) => host.actions.window({ op, match }),
+    /** Amazon Music: api.amazonMusic("blinding lights") sucht und spielt das erste Ergebnis (ab 1.5) */
+    amazonMusic: (query) => host.actions.amazonMusic({ query }),
     notify: (title, body) => host.notify?.(title, body),
     log: (...a) => host.log?.(`[${mod.id}]`, ...a),
     /** kleiner Speicher je Mod (JSON) */

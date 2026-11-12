@@ -1,7 +1,7 @@
 {
   "id": "musik",
   "name": "Musik steuern",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "CommandWave",
   "description": "„Nächstes Lied“, „Nächstes Lied in Amazon Music“, „Pause bei Spotify“, „Was läuft gerade?“ – über die Windows-Mediensteuerung, gezielt je App (Amazon Music, Spotify, Browser, Medienwiedergabe).",
   "main": "main.js",

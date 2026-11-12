@@ -140,6 +140,21 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   assert.equal(r.say, "Editor ist gerade nicht offen.");
   console.log("Fenster steuern: ok");
 
+  // Alle PowerShell-Skripte müssen sich fehlerfrei einlesen lassen (auch Teile, die hier nicht laufen)
+  const ws = require("../src/core/winscripts");
+  const scripts = { media: ws.mediaSessionScript("info", "amazon"), browser: ws.browserScript("closeMatching", "youtube"), window: ws.windowScript("focus", "notepad"), amazon: ws.amazonMusicScript("blinding lights (live)") };
+  for (const [name, sc] of Object.entries(scripts)) {
+    const f = path.join(os.tmpdir(), `cw-${name}.ps1`);
+    require("node:fs").writeFileSync(f, "\ufeff" + sc);
+    const out = execFileSync("powershell.exe", ["-NoProfile", "-Command", `$e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile('${f}', [ref]$null, [ref]$e); if ($e) { $e | ForEach-Object { $_.Message } } else { 'ok' }`]).toString().trim();
+    assert.equal(out, "ok", `Skript ${name}: ${out}`);
+  }
+  console.log("PowerShell-Skripte fehlerfrei:", Object.keys(scripts).join(", "));
+  // Amazon Music ist auf dem Testrechner nicht installiert → sauber „nicht installiert“
+  const am = await actions.amazonMusic({ query: "blinding lights" });
+  console.log("Amazon Music:", JSON.stringify(am));
+  assert.equal(am.error, "nicht installiert");
+
   console.log("Windows-Praxistest bestanden.");
 })().catch((e) => {
   console.error(e);
