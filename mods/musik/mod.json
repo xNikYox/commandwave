@@ -15,7 +15,8 @@
       "amazon musik": {
         "id": "amazon",
         "label": "Amazon Music",
-        "label_en": "Amazon Music"
+        "label_en": "Amazon Music",
+        "lang": "de"
       },
       "amazon": {
         "id": "amazon",
@@ -70,7 +71,8 @@
       "medien wiedergabe": {
         "id": "zunemusic|mediaplayer",
         "label": "der Medienwiedergabe",
-        "label_en": "Media Player"
+        "label_en": "Media Player",
+        "lang": "de"
       }
     }
   }

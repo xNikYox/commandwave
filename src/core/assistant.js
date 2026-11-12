@@ -43,7 +43,7 @@ class Assistant {
     for (const l of LANGS) this.byLang[l] = this.compiled.filter((c) => (c.lang || "de") === l);
     // Grammatik je Sprache: jedes Muster mit wenigen Beispielwerten, jeder Wert einmal (Hörtest: gleich gut wie
     // alle Sätze, aber ein Bruchteil der Größe – und sie wächst nicht mit jeder installierten App mal jedem Befehl)
-    for (const l of LANGS) this.grammars[l] = P.compactGrammar(this.byLang[l], this.slots);
+    for (const l of LANGS) this.grammars[l] = P.compactGrammar(this.byLang[l], this.slots, 2, l);
     this.grammar = this.grammars.de;
     return this.summary();
   }

@@ -14,17 +14,20 @@
       "dokumente": {
         "target": "%USERPROFILE%\\Documents",
         "label": "Dokumente",
-        "label_en": "Dokumente"
+        "label_en": "Dokumente",
+        "lang": "de"
       },
       "bilder": {
         "target": "%USERPROFILE%\\Pictures",
         "label": "Bilder",
-        "label_en": "Bilder"
+        "label_en": "Bilder",
+        "lang": "de"
       },
       "musik": {
         "target": "%USERPROFILE%\\Music",
         "label": "Musik",
-        "label_en": "Musik"
+        "label_en": "Musik",
+        "lang": "de"
       },
       "videos": {
         "target": "%USERPROFILE%\\Videos",
@@ -39,17 +42,20 @@
       "documents": {
         "target": "%USERPROFILE%\\Documents",
         "label": "Documents",
-        "label_en": "Documents"
+        "label_en": "Documents",
+        "lang": "en"
       },
       "pictures": {
         "target": "%USERPROFILE%\\Pictures",
         "label": "Pictures",
-        "label_en": "Pictures"
+        "label_en": "Pictures",
+        "lang": "en"
       },
       "music": {
         "target": "%USERPROFILE%\\Music",
         "label": "Music",
-        "label_en": "Music"
+        "label_en": "Music",
+        "lang": "en"
       }
     },
     "einstellung": {
@@ -66,7 +72,8 @@
       "anzeige": {
         "target": "ms-settings:display",
         "label": "Anzeige",
-        "label_en": "Anzeige"
+        "label_en": "Anzeige",
+        "lang": "de"
       },
       "sound": {
         "target": "ms-settings:sound",
@@ -86,7 +93,8 @@
       "spracheingabe": {
         "target": "ms-settings:speech",
         "label": "Spracheingabe",
-        "label_en": "Spracheingabe"
+        "label_en": "Spracheingabe",
+        "lang": "de"
       },
       "drucker": {
         "target": "ms-settings:printers",
@@ -96,27 +104,32 @@
       "wifi": {
         "target": "ms-settings:network-wifi",
         "label": "Wi-Fi",
-        "label_en": "Wi-Fi"
+        "label_en": "Wi-Fi",
+        "lang": "en"
       },
       "display": {
         "target": "ms-settings:display",
         "label": "Display",
-        "label_en": "Display"
+        "label_en": "Display",
+        "lang": "en"
       },
       "windows update": {
         "target": "ms-settings:windowsupdate",
         "label": "Windows Update",
-        "label_en": "Windows Update"
+        "label_en": "Windows Update",
+        "lang": "en"
       },
       "printer": {
         "target": "ms-settings:printers",
         "label": "Printer",
-        "label_en": "Printer"
+        "label_en": "Printer",
+        "lang": "en"
       },
       "speech": {
         "target": "ms-settings:speech",
         "label": "Speech",
-        "label_en": "Speech"
+        "label_en": "Speech",
+        "lang": "en"
       }
     }
   },

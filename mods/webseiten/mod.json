@@ -63,13 +63,15 @@
         "target": "https://www.wetteronline.de",
         "label": "das Wetter",
         "label_en": "the weather",
-        "match": "wetter"
+        "match": "wetter",
+        "lang": "en"
       },
       "news": {
         "target": "https://www.tagesschau.de",
         "label": "die Nachrichten",
         "label_en": "the news",
-        "match": "tagesschau"
+        "match": "tagesschau",
+        "lang": "en"
       }
     }
   },

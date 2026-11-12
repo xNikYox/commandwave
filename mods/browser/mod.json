@@ -25,7 +25,8 @@
       },
       "what's app": {
         "target": "https://web.whatsapp.com",
-        "label": "WhatsApp"
+        "label": "WhatsApp",
+        "lang": "en"
       },
       "outlook": {
         "target": "https://outlook.live.com",

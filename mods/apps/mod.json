@@ -20,12 +20,14 @@
       "rechner": {
         "target": "calc.exe",
         "process": "CalculatorApp.exe",
-        "label": "Rechner"
+        "label": "Rechner",
+        "lang": "de"
       },
       "taschenrechner": {
         "target": "calc.exe",
         "process": "CalculatorApp.exe",
-        "label": "Rechner"
+        "label": "Rechner",
+        "lang": "de"
       },
       "paint": {
         "target": "mspaint.exe",
@@ -42,7 +44,8 @@
       "datei explorer": {
         "target": "explorer.exe",
         "process": "",
-        "label": "Explorer"
+        "label": "Explorer",
+        "lang": "de"
       },
       "task manager": {
         "target": "taskmgr.exe",
@@ -65,22 +68,26 @@
       "einstellungen": {
         "target": "ms-settings:",
         "process": "SystemSettings.exe",
-        "label": "Einstellungen"
+        "label": "Einstellungen",
+        "lang": "de"
       },
       "systemsteuerung": {
         "target": "control.exe",
         "process": "",
-        "label": "Systemsteuerung"
+        "label": "Systemsteuerung",
+        "lang": "de"
       },
       "kamera": {
         "target": "microsoft.windows.camera:",
         "process": "WindowsCamera.exe",
-        "label": "Kamera"
+        "label": "Kamera",
+        "lang": "de"
       },
       "kalender": {
         "target": "outlookcal:",
         "process": "",
-        "label": "Kalender"
+        "label": "Kalender",
+        "lang": "de"
       },
       "word": {
         "target": "winword",
@@ -133,17 +140,20 @@
       "kommandozeile": {
         "target": "cmd.exe",
         "process": "cmd.exe",
-        "label": "Eingabeaufforderung"
+        "label": "Eingabeaufforderung",
+        "lang": "de"
       },
       "eingabe aufforderung": {
         "target": "cmd.exe",
         "process": "cmd.exe",
-        "label": "Eingabeaufforderung"
+        "label": "Eingabeaufforderung",
+        "lang": "de"
       },
       "bildschirmfoto": {
         "target": "ms-screenclip:",
         "process": "",
-        "label": "Bildschirmfoto"
+        "label": "Bildschirmfoto",
+        "lang": "de"
       },
       "screenshot": {
         "target": "ms-screenclip:",
@@ -153,55 +163,64 @@
       "disk kord": {
         "target": "discord:",
         "process": "Discord.exe",
-        "label": "Discord"
+        "label": "Discord",
+        "lang": "de"
       },
       "calculator": {
         "target": "calc.exe",
         "process": "CalculatorApp.exe",
         "label": "Rechner",
-        "label_en": "Calculator"
+        "label_en": "Calculator",
+        "lang": "en"
       },
       "file explorer": {
         "target": "explorer.exe",
         "process": "",
         "label": "Explorer",
-        "label_en": "File Explorer"
+        "label_en": "File Explorer",
+        "lang": "en"
       },
       "command prompt": {
         "target": "cmd.exe",
         "process": "cmd.exe",
         "label": "Eingabeaufforderung",
-        "label_en": "Command Prompt"
+        "label_en": "Command Prompt",
+        "lang": "en"
       },
       "settings": {
         "target": "ms-settings:",
         "process": "SystemSettings.exe",
         "label": "Einstellungen",
-        "label_en": "Settings"
+        "label_en": "Settings",
+        "lang": "en"
       },
       "control panel": {
         "target": "control.exe",
         "process": "",
         "label": "Systemsteuerung",
-        "label_en": "Control Panel"
+        "label_en": "Control Panel",
+        "lang": "en"
       },
       "camera": {
         "target": "microsoft.windows.camera:",
         "process": "WindowsCamera.exe",
         "label": "Kamera",
-        "label_en": "Camera"
+        "label_en": "Camera",
+        "lang": "en"
       },
       "calendar": {
         "target": "outlookcal:",
         "process": "",
         "label": "Kalender",
-        "label_en": "Calendar"
+        "label_en": "Calendar",
+        "lang": "en"
       },
       "snipping tool": {
         "target": "ms-screenclip:",
         "process": "",
         "label": "Bildschirmfoto",
-        "label_en": "Snipping Tool"
+        "label_en": "Snipping Tool",
+        "lang": "en"
       }
     }
   },

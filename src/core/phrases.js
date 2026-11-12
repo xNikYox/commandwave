@@ -216,8 +216,10 @@ function grammar(compiled, slotValues = {}, limit = 6000) {
  * genau einmal. Vosk macht daraus eine Wortschleife, in der häufige Befehlswörter stärker zählen (wie bei der vollen
  * Satzliste), ohne dass jeder App-Name in jedem Muster wiederholt wird.
  */
-function compactGrammar(compiled, slotValues = {}, perSlot = 2) {
+function compactGrammar(compiled, slotValues = {}, perSlot = 2, lang = "") {
   const out = new Set();
+  // Werte mit "lang" (z. B. „calculator“ nur Englisch) nur in die Grammatik ihrer Sprache – sonst stören sie die Erkennung
+  const keysOf = (name) => Object.entries(slotValues[name] || {}).filter(([, v]) => !lang || !v || typeof v !== "object" || !v.lang || v.lang === lang).map(([k]) => k);
   for (const c of compiled) {
     for (const v of c.variants) {
       let texts = [""];
@@ -225,7 +227,7 @@ function compactGrammar(compiled, slotValues = {}, perSlot = 2) {
         if (p.t === "w") texts = texts.map((t) => t + " " + p.v);
         else {
           // kleine Wertelisten (Zahlen, Webseiten …) ganz – nur große (z. B. 100+ Apps) mit wenigen Beispielen
-          const keys = Object.keys(slotValues[p.v] || {});
+          const keys = keysOf(p.v);
           texts = texts.flatMap((t) => (keys.length <= 30 ? keys : keys.slice(0, perSlot)).map((k) => t + " " + normalize(k)));
         }
         if (texts.length > 400) texts = texts.slice(0, 400);
@@ -234,8 +236,8 @@ function compactGrammar(compiled, slotValues = {}, perSlot = 2) {
     }
   }
   const used = new Set(compiled.flatMap((c) => c.variants.flatMap((v) => v.filter((p) => p.t === "slot").map((p) => p.v))));
-  for (const name of used) for (const key of Object.keys(slotValues[name] || {})) out.add(normalize(key));
-  for (const f of ["bitte"]) out.add(f);
+  for (const name of used) for (const key of keysOf(name)) out.add(normalize(key));
+  out.add(lang === "en" ? "please" : "bitte");
   return [...out, "[unk]"];
 }
 
