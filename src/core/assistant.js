@@ -86,10 +86,25 @@ class Assistant {
    * Mehrere Erkennungen (z. B. Deutsch + Englisch) → die, die am besten zu einem Befehl passt, ausführen.
    * cands = [{ lang, text, conf }] → Ergebnis wie handle(), plus lang
    */
+  /**
+   * opts: unsure (Erkennung unsicher → nachfragen), confirm:false (eingetippt → nie nachfragen),
+   *       free: "<Befehl>" (Text kommt aus der freien Erkennung derselben Aufnahme – nur gegen diesen Befehl abgleichen),
+   *       noFree (keine Aufnahme da → freien Rest weglassen, der Befehl fragt dann nach)
+   */
   async handleMulti(cands, fallbackLang = "de", opts = {}) {
+    if (opts.free) return this.handleFree_(cands, opts.free, fallbackLang);
     const best = this.best_(cands);
     if (!best) return { ok: false, say: TEXT[fallbackLang].nothing, heard: "", nothing: true, lang: fallbackLang };
     const T = TEXT[best.lang];
+    // Befehl mit freiem Rest („spiel lieder von {frei}“): Die Befehls-Erkennung kennt Namen nicht und hört etwas
+    // Falsches – das Fenster soll dieselbe Aufnahme frei erkennen lassen und den Text nochmal schicken
+    if (best.m && best.m.score >= SURE && P.hasFree(best.m.command) && best.m.slots[P.FREE]) {
+      if (opts.confirm === false) return this.run_(best.text, this.withWords_(best.m), best.lang); // eingetippt: Text stimmt
+      if (!opts.noFree) return { ok: false, needFree: true, command: best.m.command.id, heard: best.text, lang: best.lang };
+      const m = { ...best.m, slots: { ...best.m.slots } };
+      delete m.slots[P.FREE];
+      return this.run_(best.text, m, best.lang);
+    }
     // knapp daneben (oder die Erkennung war unsicher): nachfragen statt raten – „ja“ führt ihn dann aus
     if (best.m && opts.confirm !== false && (best.m.score < SURE || opts.unsure)) {
       const text = P.sayable(best.m);
@@ -98,6 +113,36 @@ class Assistant {
     }
     if (opts.unsure && !best.m) return { ok: false, say: T.unsure, heard: best.text, lang: best.lang };
     return this.run_(best.text, best.m && best.m.score >= SURE ? best.m : null, best.lang);
+  }
+
+  /** Freier Text derselben Aufnahme → nur gegen den Befehl abgleichen, der den freien Rest braucht */
+  async handleFree_(cands, id, fallbackLang) {
+    const c = (cands || []).find((x) => clean(x.text)) || null;
+    const cmd = this.compiled.find((x) => x.id === id);
+    if (!c || !cmd) return { ok: false, say: TEXT[fallbackLang].unknown, heard: "", lang: fallbackLang };
+    const lang = cmd.lang || "de";
+    const text = clean(c.text);
+    // die freie Erkennung hört den Befehlsanfang manchmal leicht anders („spiel lieder vom …“) – großzügig abgleichen
+    let m = P.match(text, [cmd], this.slots, NEAR);
+    if (!m || !m.slots[P.FREE]) {
+      // Notlösung: Wörter nach dem letzten bekannten Befehlswort als freien Rest nehmen
+      const known = new Set(cmd.variants.flat().filter((p) => p.t === "w").map((p) => p.v));
+      const words = text.split(" ");
+      let k = 0;
+      for (let i = 0; i < Math.min(words.length, 6); i++) if (known.has(words[i])) k = i + 1;
+      const rest = words.slice(k).join(" ");
+      if (!rest) return { ok: false, say: TEXT[lang].unsure, heard: text, lang };
+      m = { command: cmd, score: NEAR, slots: { [P.FREE]: { key: rest, value: rest, heard: rest } } };
+    }
+    return this.run_(text, this.withWords_(m), lang);
+  }
+
+  /** Eigene Wörter (DoctorBenx, SDP …) im freien Rest einsetzen */
+  withWords_(m) {
+    const f = m.slots[P.FREE];
+    if (!f) return m;
+    const t = P.applyWords(f.key, this.aliases[WORDS]);
+    return { ...m, slots: { ...m.slots, [P.FREE]: { ...f, key: t, value: t } } };
   }
 
   /** Beste Erkennung: Abgleich zählt am meisten, die Sicherheit der Erkennung entscheidet bei ähnlichen Treffern */

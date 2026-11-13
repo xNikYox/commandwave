@@ -9,7 +9,8 @@ module.exports = (api) => {
   const search = (fixed) => async (ctx) => {
     const s = fixed || ctx.slots.suchseite || GOOGLE;
     const t = T[ctx.lang];
-    const q = String((await ctx.ask(s === GOOGLE && !ctx.slots.suchseite ? t.askWeb : t.ask(s.value.label))) || "").trim();
+    // „suche nach katzenvideos“: Begriff kommt gleich mit (freier Rest), sonst nachfragen
+    const q = String(ctx.slots.frei?.key || (await ctx.ask(s === GOOGLE && !ctx.slots.suchseite ? t.askWeb : t.ask(s.value.label))) || "").trim();
     if (!q) return t.none;
     const base = (ctx.lang === "en" && s.value.url_en) || s.value.url;
     await api.open(base + encodeURIComponent(q));
@@ -19,6 +20,10 @@ module.exports = (api) => {
   api.command(["(suche|such) (auf|bei|in|mit) {suchseite}", "{suchseite} (suche|suchen|durchsuchen)", "auf {suchseite} suchen", "(suche|such) [etwas] [bei] {suchseite}"], search());
   api.command(["(suche|such) [etwas] [im internet]", "(google|googel) [etwas] [für mich]", "im internet suchen"], search(GOOGLE));
 
+  api.command(["(suche|such) (auf|bei|in) {suchseite} nach {frei}", "{suchseite} nach {frei} durchsuchen"], search());
+  api.command(["(suche|such) [im internet] nach {frei}", "google [nach] {frei}"], search(GOOGLE));
+  api.command(["search {suchseite} for {frei}", "search for {frei} on {suchseite}"], search(), { lang: "en" });
+  api.command(["search [the web] for {frei}", "google {frei}", "look up {frei}"], search(GOOGLE), { lang: "en" });
   api.command(["search (on|in|with) {suchseite}", "{suchseite} search", "search {suchseite}", "search for something on {suchseite}"], search(), { lang: "en" });
   api.command(["search [the] (web|internet)", "search for something", "google something", "look something up"], search(GOOGLE), { lang: "en" });
 };

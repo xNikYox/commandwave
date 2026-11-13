@@ -69,7 +69,9 @@ module.exports = (api) => {
   const playAmazon = (kind) => async (ctx) => {
     const t = AM[ctx.lang];
     if (!api.amazonMusic) return t.old;
-    const q = String((await ctx.ask(t.ask[kind])) || "").trim();
+    // „spiel lieder von SDP“: Name kommt gleich mit (freier Rest), sonst nachfragen
+    const said = ctx.slots.frei?.key && String(ctx.slots.frei.key).replace(/\s*\b(auf|bei|in|on|with)\s+amazon(\s+(music|musik))?\s*$/i, "").trim();
+    const q = String(said || (await ctx.ask(t.ask[kind])) || "").trim();
     if (!q) return t.none;
     const before = await api.mediaSession("info", "amazon").catch(() => null);
     const r = await api.amazonMusic(q);
@@ -94,6 +96,13 @@ module.exports = (api) => {
   api.command([`(spiele|spiel) [etwas|was|musik|ein lied|einen song] (auf|bei|in|mit) ${am}`, `(spiele|spiel) [einen] (künstler|interpreten|album) (auf|bei|in) ${am}`, `${am} (spiele|spiel) [etwas|was]`, `lied (auf|bei) ${am} (spielen|abspielen)`], playAmazon("song"));
   api.command([`(spiele|spiel) [eine|meine] playlist (auf|bei|in|mit) ${am}`, `playlist (auf|bei) ${am} (spielen|abspielen)`], playAmazon("playlist"));
   api.command([`(spiele|spiel) [einen] (sender|radiosender|radio) (auf|bei|in|mit) ${am}`], playAmazon("station"));
+  // in einem Satz – der Name wird danach frei erkannt (CommandWave 1.8)
+  api.command(["(spiel|spiele) [mir] [lieder|musik|songs|etwas|was|einen song|ein lied] von {frei}", "(spiel|spiele) [mir] (das lied|den song|das album|den titel) {frei}"], playAmazon("song"));
+  api.command(["(spiel|spiele) [meine|die] playlist {frei}"], playAmazon("playlist"));
+  api.command(["(spiel|spiele) [den] sender {frei}"], playAmazon("station"));
+  api.command(["play [songs|music|something] by {frei}", "play the (song|album|track) {frei}"], playAmazon("song"), { lang: "en" });
+  api.command(["play [my|the] playlist {frei}"], playAmazon("playlist"), { lang: "en" });
+  api.command(["play [the] station {frei}"], playAmazon("station"), { lang: "en" });
   api.command(["play (something|a song|music|an artist|an album) on amazon [music]", "play on amazon [music]", "amazon [music] play something"], playAmazon("song"), { lang: "en" });
   api.command(["play [a|my] playlist on amazon [music]"], playAmazon("playlist"), { lang: "en" });
   api.command(["play [a] (station|radio) on amazon [music]"], playAmazon("station"), { lang: "en" });

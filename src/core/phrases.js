@@ -144,6 +144,10 @@ function matchSeq(seq, words, slotValues) {
         if (p.t === "w") {
           const sim = similarity(p.v, words[j]);
           if (sim >= WORD_MIN) take(go(i + 1, j + 1), sim);
+        } else if (p.t === "slot" && p.v === FREE) {
+          // {frei}: der ganze Rest des Satzes (Namen, Suchbegriffe). Etwas weniger wert als ein echter Treffer,
+          // damit feste Befehle („spiel weiter“) immer gewinnen
+          take(go(i + 1, words.length), 1.2, { [FREE]: { key: words.slice(j).join(" "), value: words.slice(j).join(" "), heard: words.slice(j).join(" ") } });
         } else if (p.t === "slot") {
           for (let len = 1; len <= 4 && j + len <= words.length; len++) {
             const s = bestSlot(words.slice(j, j + len), slotValues[p.v]);
@@ -197,7 +201,7 @@ function grammar(compiled, slotValues = {}, limit = 6000) {
       let texts = [""];
       for (const p of v) {
         if (p.t === "w") texts = texts.map((t) => t + " " + p.v);
-        else texts = texts.flatMap((t) => Object.keys(slotValues[p.v] || {}).map((k) => t + " " + normalize(k)));
+        else if (p.v !== FREE) texts = texts.flatMap((t) => Object.keys(slotValues[p.v] || {}).map((k) => t + " " + normalize(k)));
         if (texts.length > 400) texts = texts.slice(0, 400);
       }
       for (const t of texts) {
@@ -210,6 +214,11 @@ function grammar(compiled, slotValues = {}, limit = 6000) {
   }
   return [...out, "[unk]"];
 }
+
+/** Platzhalter für den freien Rest eines Satzes: „spiel lieder von {frei}“ */
+const FREE = "frei";
+/** Hat der Befehl einen freien Rest? */
+const hasFree = (c) => c.variants.some((v) => v.some((p) => p.t === "slot" && p.v === FREE));
 
 /** Ja/Nein-Antworten (für Rückfragen) */
 const YES = { de: ["ja", "ja bitte", "genau", "richtig", "jawohl", "ja genau"], en: ["yes", "yes please", "yeah", "yep", "correct", "right"] };
@@ -257,6 +266,7 @@ function compactGrammar(compiled, slotValues = {}, perSlot = 2, lang = "") {
       let texts = [""];
       for (const p of v) {
         if (p.t === "w") texts = texts.map((t) => t + " " + p.v);
+        else if (p.v === FREE) continue; // freier Rest: nicht in der Grammatik (wird danach frei erkannt)
         else {
           // kleine Wertelisten (Zahlen, Webseiten …) ganz – nur große (z. B. 100+ Apps) mit wenigen Beispielen
           const keys = keysOf(p.v);
@@ -313,4 +323,4 @@ function fill(template, slots = {}, extra = {}, lang = "de") {
 
 const capitalize = (s) => String(s).replace(/^\p{L}/u, (c) => c.toUpperCase());
 
-module.exports = { YES, NO, yesNo, sayable, applyWords, normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };
+module.exports = { FREE, hasFree, YES, NO, yesNo, sayable, applyWords, normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };

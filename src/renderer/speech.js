@@ -87,6 +87,37 @@
       return rec;
     }
 
+    /**
+     * Eine Aufnahme (z. B. die letzte, this.lastAudio) frei erkennen – ohne Befehlsliste, damit Namen ankommen.
+     * → Promise<{ lang, text, conf }>
+     */
+    recognizeAudio(l, pcm = this.lastAudio) {
+      return new Promise((resolve) => {
+        if (!this.models[l] || !pcm || !pcm.length) return resolve({ lang: l, text: "", conf: null });
+        const rec = new this.models[l].KaldiRecognizer(SAMPLE_RATE);
+        rec.setWords(true);
+        const parts = [];
+        let t = null;
+        const done = () => {
+          clearTimeout(t);
+          clearTimeout(fallback);
+          try {
+            rec.remove();
+          } catch {
+            // schon weg
+          }
+          const words = parts.flatMap((m) => m.result?.result || []).filter((w) => w.word !== "[unk]");
+          resolve({ lang: l, text: clean(parts.map((m) => m.result?.text || "").join(" ")), conf: words.length ? words.reduce((a, w) => a + (w.conf ?? 1), 0) / words.length : null });
+        };
+        // fertig, wenn nach dem letzten Ergebnis kurz nichts mehr kommt
+        rec.on("result", (m) => (parts.push(m), clearTimeout(t), (t = setTimeout(done, 300))));
+        const fallback = setTimeout(done, 8000);
+        for (let i = 0; i < pcm.length; i += 4000) rec.acceptWaveformFloat(pcm.subarray(i, i + 4000), SAMPLE_RATE);
+        rec.acceptWaveformFloat(new Float32Array(8000), SAMPLE_RATE);
+        rec.retrieveFinalResult();
+      });
+    }
+
     /** Frei zuhören (nur eine Sprache) → Promise<{ lang, text, conf }> */
     async listenFree(l, opts = {}) {
       const rec = this.freeRecognizer(l);
@@ -197,6 +228,8 @@
       const node = new AudioWorkletNode(ctx, "cw-capture");
       src.connect(node); // Ausgang bleibt offen: nichts wird abgespielt
 
+      const audio = [];
+      let audioLen = 0;
       return new Promise((resolve) => {
         const partial = {};
         const results = {};
@@ -219,6 +252,10 @@
           stream.getTracks().forEach((t) => t.stop());
           ctx.close().catch(() => {});
           this.level = 0;
+          const pcm = new Float32Array(audioLen);
+          let o = 0;
+          for (const a of audio) (pcm.set(a, o), (o += a.length));
+          this.lastAudio = pcm;
           resolve(langs.map((l) => results[l] || { lang: l, text: clean(partial[l]), conf: null }));
         };
         const onResult = (l, m) => {
@@ -242,6 +279,8 @@
         node.port.onmessage = (e) => {
           if (!this.session) return;
           this.level = Math.min(1, e.data.level * 6);
+          // Aufnahme aufheben (höchstens 15 s): für die freie Erkennung von Namen danach (recognizeAudio)
+          if (audioLen < SAMPLE_RATE * 15) (audio.push(e.data.data), (audioLen += e.data.data.length));
           for (const l of langs) {
             try {
               use[l]?.acceptWaveformFloat(e.data.data, SAMPLE_RATE);

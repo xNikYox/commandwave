@@ -70,7 +70,8 @@ async function listen() {
     alarm.ctx?.resume().catch(() => {});
     // sehr unsichere Erkennungen nicht ausführen, sondern nachfragen („Meintest du …?“)
     const sure = heard.filter((r) => r.conf == null || r.conf >= MIN_CONF);
-    const r = heard.length && !sure.length ? await cw.commandMulti(heard, { unsure: true }) : await cw.commandMulti(sure);
+    let r = heard.length && !sure.length ? await cw.commandMulti(heard, { unsure: true }) : await cw.commandMulti(sure);
+    if (r.needFree) r = await freeTail(r);
     await answer(r, (sure.length ? sure : heard).map((x) => x.text).join(" / "));
   } catch (e) {
     setStatus(micError(e), "error");
@@ -87,12 +88,21 @@ async function runHeard(heard) {
   speech.stopWake();
   try {
     const sure = heard.filter((r) => r.conf == null || r.conf >= MIN_CONF);
-    await answer(sure.length ? await cw.commandMulti(sure) : await cw.commandMulti(heard, { unsure: true }), heard.map((x) => x.text).join(" / "));
+    // nach dem Aktivierungswort gibt es keine eigene Aufnahme: Namen fragt der Befehl dann nach
+    await answer(sure.length ? await cw.commandMulti(sure, { noFree: true }) : await cw.commandMulti(heard, { unsure: true, noFree: true }), heard.map((x) => x.text).join(" / "));
   } catch (e) {
     setStatus("Fehler: " + e.message, "error");
   }
   busy = false;
   startWake();
+}
+
+/** Befehl mit Namen („spiel lieder von SDP“): dieselbe Aufnahme frei erkennen, damit der Name ankommt */
+async function freeTail(r) {
+  setStatus(r.lang === "en" ? "One moment …" : "Einen Moment …", "thinking");
+  const f = await speech.recognizeAudio(r.lang);
+  if (f.text) bubble("#heard", f.text);
+  return cw.commandMulti([{ lang: r.lang, text: f.text || r.heard, conf: f.conf }], { free: r.command });
 }
 
 /** „Meintest du …?“ – Frage vorlesen, Ja/Nein hören, dann ausführen (oder nicht) */
@@ -769,6 +779,18 @@ async function wakeFreeTest() {
     const rec = speech.freeRecognizer(a.lang);
     const got = await feed(rec, await decode(a.url));
     out.free.push({ said: a.text, heard: got.map((m) => m.result.text).filter(Boolean).join(" ") });
+  }
+  // Befehl mit Namen: Befehls-Erkennung → „frei erkennen“ → dieselbe Aufnahme frei → Befehl mit Namen
+  out.tail = [];
+  for (const a of audio.filter((x) => x.kind === "tail")) {
+    const pcm = await decode(a.url);
+    const rec = new speech.models[a.lang].KaldiRecognizer(16000, JSON.stringify(state.grammars[a.lang]));
+    rec.setWords(true);
+    const got = await feed(rec, pcm);
+    const first = got.map((m) => m.result.text).filter(Boolean).join(" ");
+    const r1 = await cw.match(first, a.lang);
+    const f = await speech.recognizeAudio(a.lang, pcm);
+    out.tail.push({ said: a.text, grammar: first, command: r1?.command || null, free: f.text });
   }
   out.summary = { wakeEn: out.wake.filter((w) => w.lang === "en" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "en").length,
     wakeDe: out.wake.filter((w) => w.lang === "de" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "de").length,

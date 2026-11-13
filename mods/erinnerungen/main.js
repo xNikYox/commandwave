@@ -60,7 +60,8 @@ module.exports = (api) => {
 
   async function add(ctx, at, when) {
     const t = T[ctx.lang];
-    const text = String((await ctx.ask(t.ask)) || "").trim();
+    // „… an die pizza“: Text kommt gleich mit (freier Rest), sonst nachfragen
+    const text = String(ctx.slots.frei?.key || (await ctx.ask(t.ask)) || "").trim();
     if (!text) return t.none;
     const r = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at, text, lang: ctx.lang };
     save([...load(), r]);
@@ -99,6 +100,8 @@ module.exports = (api) => {
   };
 
   api.command(["erinnere mich in {zahl100} (minute|minuten|stunde|stunden)", "erinnerung in {zahl100} (minute|minuten|stunde|stunden)"], inDe);
+  api.command(["erinnere mich in {zahl100} (minute|minuten|stunde|stunden) an {frei}"], inDe);
+  api.command(["erinnere mich um {stunde} uhr an {frei}", "erinnere mich um {stunde} uhr {minute} an {frei}"], atDe);
   api.command(["erinnere mich um {stunde} uhr", "erinnerung um {stunde} uhr"], atDe);
   api.command(["erinnere mich um {stunde} uhr {minute}", "erinnerung um {stunde} uhr {minute}"], atDe);
   api.command(["welche erinnerungen [habe ich]", "(zeige|zeig) [mir] [meine] erinnerungen", "meine erinnerungen"], () => T.de.list(load().sort((a, b) => a.at - b.at)));
@@ -110,6 +113,8 @@ module.exports = (api) => {
     return T.de.cleared(n);
   });
   api.command(["remind me in {number100} (minute|minutes|hour|hours)", "reminder in {number100} (minute|minutes|hour|hours)"], inEn, { lang: "en" });
+  api.command(["remind me in {number100} (minute|minutes|hour|hours) to {frei}"], inEn, { lang: "en" });
+  api.command(["remind me at {hour} [am|pm] to {frei}", "remind me at {hour} {minute_en} [am|pm] to {frei}"], atEn, { lang: "en" });
   api.command(["remind me at {hour} [am|pm]", "remind me at {hour} {minute_en} [am|pm]"], atEn, { lang: "en" });
   api.command(["what reminders do i have", "(show|list) [my] reminders", "my reminders"], () => T.en.list(load().sort((a, b) => a.at - b.at)), { lang: "en" });
   api.command(["(delete|clear|remove) [all] [my] reminders"], () => {

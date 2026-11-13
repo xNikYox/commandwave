@@ -598,7 +598,8 @@ async function smokeExtras() {
   // dazu: Aktivierungswort (muss auslösen) und freie Sätze (für Suche/Aussprache, ohne Befehlsliste)
   const all = [...SMOKE_SENTENCES.map((t) => ({ text: t, lang: "de" })), ...SMOKE_SENTENCES_EN.map((t) => ({ text: t, lang: "en" })),
     { text: "hey wave", lang: "en", kind: "wake" }, { text: "hey computer", lang: "en", kind: "wake" },
-    { text: "hey wave what time is it", lang: "en", kind: "wake", wakeWord: "hey wave" }, { text: "hey wave", lang: "de", kind: "wake" }, { text: "funny cat videos", lang: "en", kind: "free" }, { text: "weather in berlin tomorrow", lang: "en", kind: "free" }];
+    { text: "hey wave what time is it", lang: "en", kind: "wake", wakeWord: "hey wave" }, { text: "hey wave", lang: "de", kind: "wake" },
+    { text: "play songs by coldplay", lang: "en", kind: "tail" }, { text: "search for funny cat videos", lang: "en", kind: "tail" }, { text: "funny cat videos", lang: "en", kind: "free" }, { text: "weather in berlin tomorrow", lang: "en", kind: "free" }];
   for (const [i, { text, lang, kind, wakeWord }] of all.entries()) {
     const file = path.join(dir, `satz${i}.wav`);
     const ps = "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
