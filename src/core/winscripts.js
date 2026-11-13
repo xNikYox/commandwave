@@ -279,7 +279,7 @@ function amazonMusicScript(query, { like = "Amazon Music*" } = {}) {
     // 2. Suchfeld (die App lädt ihre Oberfläche nach – ein paar Sekunden warten)
     "  $edit = $null",
     "  for ($i = 0; $i -lt 30 -and -not $edit; $i++) {",
-    "    $edits = @($roots | ForEach-Object { Of $_ $C::Edit })",
+    "    $edits = @($roots | ForEach-Object { Of $_ $C::Edit } | Where-Object { $_.Current.Name -notmatch '(?i)address|adress|url' })", // keine Adressleiste
     "    $edit = $edits | Where-Object { $_.Current.Name -match '(?i)such|search' } | Select-Object -First 1",
     "    if (-not $edit) { $edit = $edits | Select-Object -First 1 }",
     "    if (-not $edit) { Start-Sleep -Milliseconds 500 }",
