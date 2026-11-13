@@ -1,3 +1,5 @@
 node_modules/
 dist/
 models/*.tar.gz
+models/whisper-base/
+vendor/

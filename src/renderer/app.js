@@ -72,6 +72,7 @@ async function listen() {
     const sure = heard.filter((r) => r.conf == null || r.conf >= MIN_CONF);
     let r = heard.length && !sure.length ? await cw.commandMulti(heard, { unsure: true }) : await cw.commandMulti(sure);
     if (r.needFree) r = await freeTail(r);
+    else if (!r.ok && !r.nothing && heard.length) r = await recheck(r);
     await answer(r, (sure.length ? sure : heard).map((x) => x.text).join(" / "));
   } catch (e) {
     setStatus(micError(e), "error");
@@ -97,12 +98,36 @@ async function runHeard(heard) {
   startWake();
 }
 
-/** Befehl mit Namen („spiel lieder von SDP“): dieselbe Aufnahme frei erkennen, damit der Name ankommt */
+/** Genaue Erkennung der letzten Aufnahme mit Whisper (wenn eingeschaltet) → Text oder "" */
+async function accurate(lang) {
+  if (!state.settings.whisper) return "";
+  setStatus(lang === "en" ? "Listening more closely …" : "Ich höre genauer hin …", "thinking");
+  const w = await speech.transcribe(lang);
+  if (!w.ok) console.warn("Whisper:", w.error);
+  return w.ok ? String(w.text || "").trim() : "";
+}
+
+/** Befehl mit Namen („spiel lieder von SDP“): dieselbe Aufnahme genau (Whisper) oder frei (Vosk) erkennen */
 async function freeTail(r) {
   setStatus(r.lang === "en" ? "One moment …" : "Einen Moment …", "thinking");
-  const f = await speech.recognizeAudio(r.lang);
+  const w = await accurate(r.lang);
+  const f = w ? { text: w, conf: 0.85 } : await speech.recognizeAudio(r.lang);
   if (f.text) bubble("#heard", f.text);
   return cw.commandMulti([{ lang: r.lang, text: f.text || r.heard, conf: f.conf }], { free: r.command });
+}
+
+/**
+ * Nicht (sicher) erkannt: Whisper hört dieselbe Aufnahme genau an. Passt das zu einem Befehl → ausführen;
+ * sonst wenigstens anzeigen, was wirklich gesagt wurde (z. B. „bunt“ statt „und“).
+ */
+async function recheck(r) {
+  const lang = r.lang || primaryLang();
+  const w = await accurate(lang);
+  if (!w) return r;
+  let r2 = await cw.commandMulti([{ lang, text: w, conf: 0.85 }], r.confirm ? {} : { unsure: false });
+  if (r2.needFree) r2 = await cw.commandMulti([{ lang, text: w, conf: 0.85 }], { free: r2.command });
+  if (r2.ok || r2.confirm) return r2;
+  return { ...r, heard: w, confirm: r.confirm }; // weiterhin unbekannt – aber mit dem richtig verstandenen Text
 }
 
 /** „Meintest du …?“ – Frage vorlesen, Ja/Nein hören, dann ausführen (oder nicht) */
@@ -429,6 +454,7 @@ for (const el of $$("[data-set]")) el.addEventListener("change", async () => {
   const k = el.dataset.set;
   const v = el.type === "checkbox" ? el.checked : el.dataset.num != null ? Number(el.value) : el.value;
   state.settings = (await cw.saveSettings({ [k]: v })).settings;
+  if (k === "whisper") v ? speech.warmWhisper() : speech.unloadWhisper();
   if (k === "wake" || k === "micId") {
     speech.stopWake();
     startWake();
@@ -694,6 +720,8 @@ cw.onAppUpdate(renderAppUpdate);
     idle();
     showHint();
     startWake();
+    // Whisper im Leerlauf vorladen, damit die erste genaue Erkennung nicht warten muss
+    if (state.settings.whisper && !state.smoke) setTimeout(() => speech.warmWhisper(), 8000);
   } catch (e) {
     setStatus("Spracherkennung konnte nicht geladen werden: " + e.message, "error");
   }
@@ -791,6 +819,19 @@ async function wakeFreeTest() {
     const r1 = await cw.match(first, a.lang);
     const f = await speech.recognizeAudio(a.lang, pcm);
     out.tail.push({ said: a.text, grammar: first, command: r1?.command || null, free: f.text });
+  }
+  // Whisper (genaue Erkennung): Namen-Sätze und echte menschliche Aufnahmen (Wikimedia, Deutsch)
+  out.whisper = { warm: await speech.warmWhisper(), results: [] };
+  for (const a of audio.filter((x) => x.kind === "tail" || x.kind === "human")) {
+    const pcm = await decode(a.url);
+    let vosk = "";
+    if (a.kind === "human") {
+      const rec = new speech.models[a.lang].KaldiRecognizer(16000, JSON.stringify(state.grammars[a.lang]));
+      rec.setWords(true);
+      vosk = (await feed(rec, pcm)).map((m) => m.result.text).filter(Boolean).join(" ");
+    }
+    const w = await speech.transcribe(a.lang, pcm);
+    out.whisper.results.push({ said: a.text, vosk, whisper: w.text, ms: w.ms, error: w.error });
   }
   out.summary = { wakeEn: out.wake.filter((w) => w.lang === "en" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "en").length,
     wakeDe: out.wake.filter((w) => w.lang === "de" && w.fired).length + "/" + out.wake.filter((w) => w.lang === "de").length,

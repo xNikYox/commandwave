@@ -50,6 +50,65 @@
     unload() {
       if (this.session || this.wakeActive) return; // Aktivierungswort braucht das Modell
       for (const l of Object.keys(this.models)) this.drop(l);
+      this.unloadWhisper();
+    }
+
+    /* ---------- Whisper (OpenAI, MIT): genaue Erkennung beliebiger Wörter und Namen, offline ----------
+     * Läuft im Fenster mit mehreren Kernen (aus einem Hintergrund-Thread heraus blockieren sich die Rechen-Threads).
+     * Wird nur gebraucht, wenn die schnelle Befehls-Erkennung (Vosk) etwas nicht sicher verstanden hat. */
+    whisper_() {
+      if (this.wh) return this.wh;
+      this.wh = (async () => {
+        const T = await import(new URL("tjs/transformers.min.js", location.href).href);
+        T.env.allowRemoteModels = false; // nie ins Internet – das Modell liegt in der App
+        T.env.allowLocalModels = true;
+        T.env.useBrowserCache = false;
+        T.env.localModelPath = new URL("model/", location.href).href;
+        T.env.backends.onnx.wasm.wasmPaths = new URL("tjs/", location.href).href;
+        T.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1)) : 1;
+        const [processor, tokenizer, model] = await Promise.all([
+          T.AutoProcessor.from_pretrained("whisper-base"),
+          T.AutoTokenizer.from_pretrained("whisper-base"),
+          T.WhisperForConditionalGeneration.from_pretrained("whisper-base", { dtype: { encoder_model: "q8", decoder_model_merged: "q8" }, device: "wasm" }),
+        ]);
+        return { processor, tokenizer, model, threads: T.env.backends.onnx.wasm.numThreads };
+      })();
+      this.wh.catch(() => (this.wh = null)); // beim nächsten Mal neu versuchen
+      return this.wh;
+    }
+
+    /** Whisper vorab laden (dauert ein paar Sekunden) → { ok, ms, threads } */
+    async warmWhisper() {
+      const t0 = performance.now();
+      try {
+        const w = await this.whisper_();
+        return { ok: true, ms: Math.round(performance.now() - t0), threads: w.threads };
+      } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
+      }
+    }
+
+    /** Aufnahme genau erkennen → { ok, text, ms } (Standard: die letzte Aufnahme) */
+    async transcribe(lang, pcm = this.lastAudio) {
+      if (!pcm || pcm.length < SAMPLE_RATE * 0.2) return { ok: true, text: "" };
+      const t0 = performance.now();
+      try {
+        const w = await this.whisper_();
+        const inputs = await w.processor(pcm.slice(0, SAMPLE_RATE * 30)); // höchstens 30 s
+        const ids = await w.model.generate({ ...inputs, language: lang === "en" ? "en" : "de", task: "transcribe", max_new_tokens: 96 });
+        let text = w.tokenizer.batch_decode(ids, { skip_special_tokens: true })[0].trim();
+        if (HALLUCINATION.test(text)) text = "";
+        return { ok: true, text, ms: Math.round(performance.now() - t0) };
+      } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
+      }
+    }
+
+    /** Speicher freigeben (Sparmodus, Whisper aus) */
+    unloadWhisper() {
+      const p = this.wh;
+      this.wh = null;
+      p?.then((w) => w.model.dispose?.()).catch(() => {});
     }
 
     /** Erlaubte Sätze je Sprache setzen ({ de: [...], en: [...] }) – neuer Erkenner nur bei Änderung */
@@ -369,5 +428,7 @@
   }
 
   const clean = (t) => String(t || "").replace(/\[unk\]/g, "").replace(/\s+/g, " ").trim();
+  // typische Whisper-Erfindungen bei Stille/Rauschen – lieber nichts als so etwas
+  const HALLUCINATION = /untertitel|amara\.org|vielen dank (fürs|für's) zu(schauen|sehen)|thanks? (you )?for watching|subtitles by|^\W*[[(*♪]+[^\])]*[\])*♪]+\W*$/i;
   window.Speech = Speech;
 })();

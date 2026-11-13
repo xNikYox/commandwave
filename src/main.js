@@ -67,6 +67,7 @@ const DEFAULTS = {
   wake: false, // Aktivierungswort: ohne Taste zuhören, sobald man es sagt
   wakeWord: "hey wave",
   overlay: true, // kleine Anzeige am Bildschirmrand, wenn das Fenster nicht vorne ist
+  whisper: true, // genaue Erkennung (Whisper) für Namen und nicht sicher verstandene Sätze
   showOnHotkey: false,
   autostart: false,
   startHidden: false,
@@ -600,6 +601,18 @@ async function smokeExtras() {
     { text: "hey wave", lang: "en", kind: "wake" }, { text: "hey computer", lang: "en", kind: "wake" },
     { text: "hey wave what time is it", lang: "en", kind: "wake", wakeWord: "hey wave" }, { text: "hey wave", lang: "de", kind: "wake" },
     { text: "play songs by coldplay", lang: "en", kind: "tail" }, { text: "search for funny cat videos", lang: "en", kind: "tail" }, { text: "funny cat videos", lang: "en", kind: "free" }, { text: "weather in berlin tomorrow", lang: "en", kind: "free" }];
+  // echte menschliche Aussprache (Wikimedia Commons, CC BY-SA): einzelne deutsche Wörter
+  for (const [i, w] of ["bunt", "und", "Musik", "Lied", "spielen", "Bonn"].entries()) {
+    try {
+      const api = await (await fetch(`https://commons.wikimedia.org/w/api.php?action=query&titles=File:De-${w}.ogg&prop=imageinfo&iiprop=url&format=json`, { headers: { "User-Agent": "CommandWave-Test/1.0" } })).json();
+      const url = Object.values(api.query.pages)[0].imageinfo[0].url;
+      const buf = Buffer.from(await (await fetch(url, { headers: { "User-Agent": "CommandWave-Test/1.0" } })).arrayBuffer());
+      fs.writeFileSync(path.join(dir, `mensch${i}.ogg`), buf);
+      out.audio.push({ text: w.toLowerCase(), lang: "de", kind: "human", url: `cw://app/testaudio/mensch${i}.ogg` });
+    } catch (e) {
+      console.log("Testaufnahme nicht ladbar:", w, e.message);
+    }
+  }
   for (const [i, { text, lang, kind, wakeWord }] of all.entries()) {
     const file = path.join(dir, `satz${i}.wav`);
     const ps = "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
@@ -745,11 +758,21 @@ app.whenReady().then(async () => {
     let base = path.join(__dirname, "renderer");
     let sub = rel;
     if (rel.startsWith("vosk/")) (base = path.join(ROOT, "node_modules", "vosk-browser", "dist")), (sub = rel.slice(5));
+    else if (rel.startsWith("tjs/")) (base = path.join(RES, "vendor", "transformers")), (sub = rel.slice(4)); // Whisper-Laufzeit
     else if (SMOKE && rel.startsWith("testaudio/")) (base = path.join(DATA, "testaudio")), (sub = rel.slice(10));
     else if (rel.startsWith("model/")) (base = path.join(RES, "models")), (sub = rel.slice(6));
     const file = path.join(base, sub);
     if (u.host !== "app" || !file.startsWith(base + path.sep) || !fs.existsSync(file)) return new Response("Nicht gefunden", { status: 404 });
-    return net.fetch(pathToFileURL(file).toString());
+    // „cross-origin isolated“: erst damit darf WebAssembly mehrere Kerne nutzen (Whisper ~3× schneller)
+    return net.fetch(pathToFileURL(file).toString()).then((r) => {
+      const headers = new Headers(r.headers);
+      headers.set("Cross-Origin-Opener-Policy", "same-origin");
+      headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+      headers.set("Cross-Origin-Resource-Policy", "same-origin");
+      if (/\.m?js$/.test(file)) headers.set("Content-Type", "text/javascript");
+      if (/\.wasm$/.test(file)) headers.set("Content-Type", "application/wasm");
+      return new Response(r.body, { status: r.status, headers });
+    });
   });
   // Mikrofon nur für das eigene Fenster erlauben
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === "media" && wc.getURL().startsWith("cw://app/")));
@@ -791,7 +814,7 @@ app.whenReady().then(async () => {
     setTimeout(() => {
       console.log("SMOKE " + JSON.stringify({ ok: false, error: "Zeitüberschreitung" }));
       app.exit(2);
-    }, 240000);
+    }, 280000);
   }
   const copied = seedDefaults(DEFAULT_MODS, MODS_DIR);
   if (copied.length) log("Mitgelieferte Mods eingerichtet:", copied.join(", "));
