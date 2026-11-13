@@ -9,7 +9,7 @@
 //   sequence mehrere Schritte            { "type": "sequence", "steps": [ {…}, {…} ] }
 //   say/none nur antworten
 const { spawn } = require("node:child_process");
-const { mediaSessionScript, browserScript, windowScript, amazonMusicScript, typeTextScript, appVolumeScript, systemScript } = require("./winscripts");
+const { mediaSessionScript, browserScript, windowScript, amazonMusicScript, typeTextScript, appVolumeScript, systemScript, screenshotScript } = require("./winscripts");
 const os = require("node:os");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -177,6 +177,15 @@ function createActions(env = {}) {
       const win = platform === "win32" ? await powershellJson(systemScript()).catch(() => null) : null;
       return { ok: true, memTotal: os.totalmem(), memFree: os.freemem(), cpu: win?.load ?? cpu, cpus: os.cpus().length, uptime: os.uptime(), disk,
         battery: win?.hasBattery ? { percent: win.battery, charging: win.charging, remaining: win.remaining > 0 ? win.remaining : null } : null, temp: win?.temp ?? null };
+    },
+    /** Bildschirmfoto: mode "screen" (alle Bildschirme) oder "window" (vorderstes Fenster) → { ok, file } */
+    async screenshot({ mode = "screen" }) {
+      const dir = env.screenshotDir || path.join(os.homedir(), "Pictures", "Screenshots");
+      const d = new Date();
+      const p2 = (n) => String(n).padStart(2, "0");
+      const file = path.join(dir, `CommandWave ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}-${p2(d.getSeconds())}.png`);
+      await env.beforeScreenshot?.(); // z. B. Overlay ausblenden, damit es nicht mit aufs Bild kommt
+      return powershellJson(screenshotScript(file, mode === "window" ? "window" : "screen", env.skipPid || process.pid));
     },
     async sequence({ steps = [] }, run) {
       for (const s of steps) {

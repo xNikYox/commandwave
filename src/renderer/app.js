@@ -65,7 +65,9 @@ async function listen() {
   $("#answer").hidden = true;
   try {
     await ensureModels();
+    alarm.ctx?.suspend().catch(() => {}); // Weckton beim Zuhören pausieren, sonst versteht er „Wecker aus“ nicht
     const heard = await hear();
+    alarm.ctx?.resume().catch(() => {});
     // sehr unsichere Erkennungen nicht ausführen, sondern nachfragen („Meintest du …?“)
     const sure = heard.filter((r) => r.conf == null || r.conf >= MIN_CONF);
     const r = heard.length && !sure.length ? await cw.commandMulti(heard, { unsure: true }) : await cw.commandMulti(sure);
@@ -127,6 +129,43 @@ cw.onAsk(async ({ id, say: q, lang }) => {
   }
   cw.askAnswer(id, text);
 });
+
+/* ---------------- Weckton: sanft, wird über 90 Sekunden lauter, höchstens 15 Minuten ---------------- */
+const alarm = { ctx: null, timer: null, stopAt: 0 };
+function alarmTone(on) {
+  clearInterval(alarm.timer);
+  if (alarm.ctx) alarm.ctx.close().catch(() => {});
+  alarm.ctx = null;
+  if (!on) return;
+  const ctx = new AudioContext();
+  alarm.ctx = ctx;
+  const start = ctx.currentTime;
+  alarm.stopAt = Date.now() + 15 * 60 * 1000;
+  const master = ctx.createGain();
+  master.connect(ctx.destination);
+  master.gain.setValueAtTime(0.03, start);
+  master.gain.linearRampToValueAtTime(0.6, start + 90);
+  // kleine Melodie (Dreiklang) alle 2 Sekunden
+  const play = () => {
+    if (Date.now() > alarm.stopAt) return alarmTone(false);
+    const t0 = ctx.currentTime;
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0 + i * 0.18);
+      g.gain.exponentialRampToValueAtTime(0.8, t0 + i * 0.18 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.18 + 0.5);
+      o.connect(g).connect(master);
+      o.start(t0 + i * 0.18);
+      o.stop(t0 + i * 0.18 + 0.55);
+    });
+  };
+  play();
+  alarm.timer = setInterval(play, 2000);
+}
+cw.onSound(({ name, on }) => name === "alarm" && alarmTone(on));
 
 /* ---------------- Aktivierungswort ---------------- */
 async function startWake() {
@@ -585,7 +624,34 @@ $("#addSource").addEventListener("submit", async (e) => {
 });
 
 /* ---------------- App-Updates ---------------- */
+/** Hinweis oben im Fenster: automatische Updates klemmen seit einer Weile, oder ein Update wartet schon lange */
+function renderBanner(u) {
+  const b = $("#updBanner");
+  const DAY = 24 * 3600 * 1000;
+  let text = "";
+  let btn = "";
+  if (u.status === "error" && u.errorSince && Date.now() - u.errorSince > 10 * 60 * 1000) {
+    text = "Automatische Updates klappen gerade nicht. Lade die neueste Version einfach von Hand – Einstellungen und Mods bleiben erhalten.";
+    btn = "Neueste Version laden";
+  } else if (u.status === "ready" && u.readyAt && Date.now() - u.readyAt > DAY) {
+    text = `Version ${u.version} wartet schon seit ${Math.floor((Date.now() - u.readyAt) / DAY) > 1 ? Math.floor((Date.now() - u.readyAt) / DAY) + " Tagen" : "gestern"} auf die Installation.`;
+    btn = "Jetzt neu starten";
+  }
+  b.hidden = !text;
+  $("#updBannerText").textContent = text;
+  $("#updBannerBtn").textContent = btn;
+}
+$("#updBannerBtn").onclick = async () => ((await cw.appUpdate()).status === "ready" ? cw.installAppUpdate() : cw.downloadApp());
+$("#updBannerReport").onclick = () => $("#copyReport").click();
+$("#copyReport").onclick = async () => {
+  const r = await cw.copyReport();
+  $("#reportText").textContent = r.ok ? `Kopiert (${Math.round(r.chars / 1000)} KB) – jetzt mit Strg + V einfügen und schicken.` : "Das ging nicht.";
+};
+$("#openLogs").onclick = () => cw.openLogs();
+setInterval(async () => renderBanner(await cw.appUpdate()), 10 * 60 * 1000);
+
 function renderAppUpdate(u) {
+  renderBanner(u);
   const t = {
     idle: "Updates kommen automatisch.", dev: "Im Entwicklungsmodus keine Updates.", checking: "Suche nach Updates …", current: "Du hast die neueste Version.",
     downloading: `Lade Version ${u.version || ""} … ${u.percent || 0} %`, ready: `Version ${u.version} ist bereit – wird installiert, wenn du CommandWave ein paar Minuten nicht benutzt.`, error: "Update-Prüfung fehlgeschlagen: " + (u.error || ""),
@@ -735,6 +801,11 @@ async function smokeTest() {
     out.overlay = await cw.overlayTest();
     out.confirm = await cw.commandMulti([{ lang: "de", text: "welcher tag ist", conf: 0.9 }], {}); // knapp daneben → Rückfrage „Meintest du …?“
     out.confirmNo = await cw.confirm("nein");
+    out.report = await cw.copyReport();
+    alarmTone(true);
+    await new Promise((r) => setTimeout(r, 600));
+    out.alarmTone = alarm.ctx ? alarm.ctx.state : "keiner";
+    alarmTone(false);
     out.time = await cw.command("wie spät ist es", "de");
     out.unknown = await cw.command("erzähl mir einen witz", "de");
     out.timeEn = await cw.command("what time is it", "en");
@@ -742,7 +813,7 @@ async function smokeTest() {
     const voices = await speech.voicesReady();
     out.voices = voices.map((v) => `${v.name} (${v.lang})`);
     out.ok = ready && out.recognizer && !out.recognizer.timeout && out.time.ok && /Uhr/.test(out.time.say) && out.unknown.say === "Diesen Befehl kenne ich leider nicht." &&
-      out.timeEn.ok && /^It's /.test(out.timeEn.say) && out.models.length === 2 && !!out.overlay?.ok && out.confirm.confirm === true && out.confirmNo.cancelled === true &&
+      out.timeEn.ok && /^It's /.test(out.timeEn.say) && out.models.length === 2 && !!out.overlay?.ok && out.confirm.confirm === true && out.confirmNo.cancelled === true && out.report?.ok === true && out.report.chars > 500 &&
       (out.wakeFree.wake.length === 0 || out.wakeFree.wake.some((w) => w.fired));
   } catch (e) {
     out.error = e.message;

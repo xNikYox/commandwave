@@ -1,0 +1,8 @@
+{
+  "id": "wecker",
+  "name": "Wecker",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "„Weck mich um sieben Uhr“ – zur Weckzeit spielt Amazon Music (oder die letzte Musik) leise weiter und wird langsam lauter; läuft keine Musik, ein sanfter Weckton. „Wecker aus“, „Schlummern“, „Welche Wecker habe ich?“. Der PC muss dafür an sein (nicht im Ruhezustand). English: „Wake me up at seven“.",
+  "main": "main.js"
+}

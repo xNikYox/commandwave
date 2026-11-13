@@ -1,6 +1,6 @@
 // CommandWave – Hauptprozess: Fenster, Tray-Icon, Tastenkombination, Mods, Mod-Updater, Einstellungen.
 // Spracherkennung (Vosk) und Sprachausgabe (Windows-Stimmen) laufen im Fenster – komplett offline.
-const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, nativeImage, Notification, shell, protocol, net, session, screen } = require("electron");
+const { app, BrowserWindow, Tray, Menu, ipcMain, globalShortcut, nativeImage, Notification, shell, protocol, net, session, screen, clipboard } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -135,6 +135,15 @@ const actions = createActions({
   openExternal: (u) => shell.openExternal(u),
   openPath: (p) => shell.openPath(p),
   diagDir: DATA,
+  screenshotDir: path.join(app.getPath("pictures"), "Screenshots"),
+  // Overlay nicht mit aufs Bildschirmfoto
+  beforeScreenshot: async () => {
+    if (overlay && !overlay.isDestroyed() && overlay.isVisible()) {
+      overlay.hide();
+      overlayShown = false;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  },
 });
 const assistant = new Assistant({
   modsDir: MODS_DIR,
@@ -145,6 +154,13 @@ const assistant = new Assistant({
   ask,
   log,
   disabled: settings.disabled,
+  // Töne im Fenster (Weckton): das Fenster muss dafür geladen sein, auch versteckt
+  sound: (name, on) => {
+    if (!alive()) createWindow(false);
+    const go = () => send("sound", { name, on });
+    win.webContents.isLoading() ? win.webContents.once("did-finish-load", () => setTimeout(go, 1500)) : go();
+  },
+  reveal: (file) => shell.showItemInFolder(String(file)),
 });
 assistant.aliases = loadAliases();
 
@@ -231,7 +247,7 @@ function notify(title, body) {
  * Sicher installieren: NICHT beim Beenden (fährt Windows dabei herunter oder bremst der Virenscanner den Installer,
  * ist die alte Version schon weg und die neue noch nicht da). Stattdessen, wenn CommandWave ein paar Minuten nicht
  * benutzt wurde: Installer still starten, danach startet die App von selbst wieder. Nie während Windows herunterfährt. */
-const appUpdate = { status: "idle", version: null, percent: 0, error: null };
+const appUpdate = { status: "idle", version: null, percent: 0, error: null, readyAt: null, errorSince: null };
 let autoUpdater = null;
 let lastActivity = Date.now();
 let sessionEnding = false;
@@ -262,6 +278,10 @@ function installUpdateNow() {
 }
 
 function setAppUpdate(p) {
+  // für den Hinweis im Fenster: seit wann ist das Update bereit / klappt die Prüfung nicht
+  if (p.status === "ready" && appUpdate.status !== "ready") p.readyAt = Date.now();
+  if (p.status === "error") p.errorSince = appUpdate.errorSince || Date.now();
+  else if (["current", "ready", "downloading"].includes(p.status)) p.errorSince = null; // „checking“ zählt nicht als Erfolg
   Object.assign(appUpdate, p);
   send("appUpdate", appUpdate);
 }
@@ -319,6 +339,42 @@ function setupAppUpdates() {
   setInterval(() => {
     if (appUpdate.status === "ready" && settings.appAutoUpdate && Date.now() - lastActivity > IDLE_BEFORE_INSTALL && !(alive() && win.isFocused())) installUpdateNow();
   }, 60 * 1000);
+}
+
+/* ---------------- Fehlerbericht ----------------
+ * Alles, was man zur Fehlersuche braucht, in einem Text: Version, Windows, Einstellungen, Mods, Update-Stand und die
+ * letzten Zeilen der Protokolle. Keine gelernten Wörter, keine Erinnerungs-Texte. */
+function tail(file, lines = 150) {
+  try {
+    const t = fs.readFileSync(path.join(DATA, file), "utf8").split(/\r?\n/);
+    return t.slice(-lines).join("\n").trim() || "(leer)";
+  } catch {
+    return "(keine Datei)";
+  }
+}
+function buildReport() {
+  const os = require("node:os");
+  const { sources, trusted, ...s } = settings;
+  const m = app.getAppMetrics();
+  return [
+    `CommandWave-Fehlerbericht · ${new Date().toISOString()}`,
+    `Version ${app.getVersion()} · Electron ${process.versions.electron} · Windows ${os.release()} (${os.arch()}) · ${Math.round(os.totalmem() / 1e9)} GB RAM · ${os.cpus().length} Kerne`,
+    `Speicher CommandWave: ${Math.round(m.reduce((a, p) => a + (p.memory?.workingSetSize || 0), 0) / 1024)} MB in ${m.length} Prozessen`,
+    `App-Update: ${JSON.stringify(appUpdate)}`,
+    `Mods: ${assistant.mods.map((x) => `${x.id}@${x.version}${x.enabled ? "" : " (aus)"}${x.error ? " FEHLER " + x.error : ""}`).join(", ")}`,
+    `Mod-Fehler: ${JSON.stringify(assistant.errors)} · Mod-Updates: ${JSON.stringify({ errors: updates.errors, checkedAt: updates.checkedAt })}`,
+    `Quellen: ${(sources || []).map((x) => x.repo || x.path || x.url).join(", ")} · Apps gefunden: ${foundApps} · Befehle: ${assistant.compiled.length}`,
+    `Einstellungen: ${JSON.stringify(s)}`,
+    "",
+    "===== fehler.log =====",
+    tail("fehler.log"),
+    "",
+    "===== update.log =====",
+    tail("update.log"),
+    "",
+    "===== amazon-music.log =====",
+    tail("amazon-music.log", 200),
+  ].join("\n");
 }
 
 /* ---------------- Fenster & Tray ---------------- */
@@ -450,6 +506,7 @@ function buildTray() {
     { label: "Nach Mod-Updates suchen", click: () => checkUpdates() },
     { label: "Mods-Ordner öffnen", click: () => shell.openPath(MODS_DIR) },
     ...(appUpdate.status === "ready" ? [{ label: `Update ${appUpdate.version} jetzt installieren`, click: installUpdateNow }] : []),
+    { label: "Fehlerbericht kopieren", click: () => (clipboard.writeText(buildReport()), notify("Fehlerbericht kopiert", "Jetzt einfach einfügen (Strg + V) und schicken.")) },
     { type: "separator" },
     { label: "Beenden", click: () => app.quit() },
   ]));
@@ -642,6 +699,20 @@ ipcMain.handle("app:checkUpdate", async () => {
   return appUpdate;
 });
 ipcMain.handle("app:installUpdate", () => installUpdateNow());
+// neueste Version von Hand laden (wenn automatische Updates klemmen)
+ipcMain.handle("app:download", () => shell.openExternal("https://github.com/xNikYox/commandwave/releases/latest/download/CommandWave-Setup.exe"));
+ipcMain.handle("report:copy", () => {
+  const text = buildReport();
+  clipboard.writeText(text);
+  const file = path.join(DATA, "fehlerbericht.txt");
+  try {
+    fs.writeFileSync(file, text);
+  } catch {
+    // nicht schreibbar
+  }
+  return { ok: true, chars: text.length, file };
+});
+ipcMain.handle("report:folder", () => shell.openPath(DATA));
 // Testmodus: Overlay öffnen und prüfen, ob es lädt und Meldungen anzeigt
 ipcMain.handle("overlay:test", () => new Promise((resolve) => {
   if (!SMOKE) return resolve(null);

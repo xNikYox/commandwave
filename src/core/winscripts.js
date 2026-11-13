@@ -432,4 +432,51 @@ function systemScript() {
   ].join("\n");
 }
 
-module.exports = { mediaSessionScript, browserScript, windowScript, amazonMusicScript, typeTextScript, appVolumeScript, systemScript, MIXER_CS, BROWSERS, TAB_KEYS, psq };
+/**
+ * Bildschirmfoto als PNG: mode "screen" = alle Bildschirme, "window" = vorderstes Fenster (CommandWave übersprungen).
+ * Vorher DPI-bewusst schalten, sonst schneidet Windows bei Skalierung (125 %, 150 %) einen Teil ab.
+ */
+function screenshotScript(file, mode = "screen", skipPid = 0) {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+    "try {",
+    "  Add-Type -AssemblyName System.Drawing, System.Windows.Forms",
+    "  Add-Type -Namespace CW -Name Shot -MemberDefinition @'",
+    '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();',
+    '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
+    '[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint c);',
+    '[DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
+    '[DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);',
+    '[DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);',
+    "[StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }",
+    "'@",
+    "  $null = [CW.Shot]::SetProcessDPIAware()",
+    `  $file = ${psq(file)}; $mode = ${psq(mode)}; $skip = ${Number(skipPid) || 0}`,
+    "  $null = New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName($file))",
+    "  if ($mode -eq 'window') {",
+    "    function PidOf($h) { $p = [uint32]0; $null = [CW.Shot]::GetWindowThreadProcessId($h, [ref]$p); $p }",
+    "    $h = [CW.Shot]::GetForegroundWindow(); $n = 0",
+    "    while ($h -ne [IntPtr]::Zero -and $n -lt 500 -and ((PidOf $h) -eq $skip -or -not [CW.Shot]::IsWindowVisible($h) -or [CW.Shot]::GetWindowTextLength($h) -eq 0 -or (([CW.Shot]::GetWindowLong($h, -20) -band 0x80) -ne 0))) { $h = [CW.Shot]::GetWindow($h, 2); $n++ }",
+    "    if ($h -eq [IntPtr]::Zero) { [pscustomobject]@{ ok = $false; error = 'kein Fenster' } | ConvertTo-Json -Compress; exit }",
+    // sichtbarer Rahmen ohne Schatten (DWMWA_EXTENDED_FRAME_BOUNDS = 9)
+    "    $r = New-Object CW.Shot+RECT; $null = [CW.Shot]::DwmGetWindowAttribute($h, 9, [ref]$r, 16)",
+    "    $x = $r.Left; $y = $r.Top; $w = $r.Right - $r.Left; $hh = $r.Bottom - $r.Top",
+    "    $name = (Get-Process -Id (PidOf $h) -ErrorAction SilentlyContinue).ProcessName",
+    "  } else {",
+    "    $v = [System.Windows.Forms.SystemInformation]::VirtualScreen; $x = $v.X; $y = $v.Y; $w = $v.Width; $hh = $v.Height; $name = ''",
+    "  }",
+    "  if ($w -le 0 -or $hh -le 0) { [pscustomobject]@{ ok = $false; error = 'leerer Bereich' } | ConvertTo-Json -Compress; exit }",
+    "  $bmp = New-Object System.Drawing.Bitmap $w, $hh",
+    "  $g = [System.Drawing.Graphics]::FromImage($bmp)",
+    "  $g.CopyFromScreen($x, $y, 0, 0, $bmp.Size)",
+    "  $bmp.Save($file, [System.Drawing.Imaging.ImageFormat]::Png)",
+    "  $g.Dispose(); $bmp.Dispose()",
+    "  [pscustomobject]@{ ok = $true; file = $file; width = $w; height = $hh; name = $name } | ConvertTo-Json -Compress",
+    "} catch { [pscustomobject]@{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress }",
+  ].join("\n");
+}
+
+module.exports = { mediaSessionScript, browserScript, windowScript, amazonMusicScript, typeTextScript, appVolumeScript, systemScript, screenshotScript, MIXER_CS, BROWSERS, TAB_KEYS, psq };

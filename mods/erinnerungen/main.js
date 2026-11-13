@@ -110,7 +110,7 @@ module.exports = (api) => {
     return T.de.cleared(n);
   });
   api.command(["remind me in {number100} (minute|minutes|hour|hours)", "reminder in {number100} (minute|minutes|hour|hours)"], inEn, { lang: "en" });
-  api.command(["remind me at {hour} [o'clock] [am|pm|in the morning|in the evening]", "remind me at {hour} {minute_en} [am|pm]"], atEn, { lang: "en" });
+  api.command(["remind me at {hour} [am|pm]", "remind me at {hour} {minute_en} [am|pm]"], atEn, { lang: "en" });
   api.command(["what reminders do i have", "(show|list) [my] reminders", "my reminders"], () => T.en.list(load().sort((a, b) => a.at - b.at)), { lang: "en" });
   api.command(["(delete|clear|remove) [all] [my] reminders"], () => {
     const n = load().length;

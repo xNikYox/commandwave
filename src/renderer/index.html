@@ -13,6 +13,10 @@
   </header>
 
   <main>
+    <div class="banner" id="updBanner" hidden>
+      <span id="updBannerText"></span>
+      <span class="banner-btns"><button class="btn primary" id="updBannerBtn"></button><button class="btn" id="updBannerReport">Fehlerbericht</button></span>
+    </div>
     <section class="stage">
       <button class="mic" id="mic" aria-label="Zuhören">
         <span class="ring"></span><span class="ring r2"></span>
@@ -106,6 +110,11 @@
         <h3>App-Updates</h3>
         <label class="row"><span>CommandWave automatisch aktualisieren<small class="sub">Lädt neue Versionen im Hintergrund, installiert beim Beenden</small></span><input type="checkbox" class="switch" data-set="appAutoUpdate"></label>
         <div class="row"><span id="appUpdateText" class="muted small">–</span><button class="btn" id="appUpdateBtn">Nach Updates suchen</button></div>
+      </div>
+      <div class="card">
+        <h3>Hilfe bei Problemen</h3>
+        <p class="muted small">Klemmt etwas? Der Fehlerbericht sammelt Version, Einstellungen und die letzten Protokolle (ohne gelernte Wörter und Erinnerungen) und kopiert alles – dann einfach einfügen und schicken.</p>
+        <div class="row"><span class="muted small" id="reportText"></span><span class="banner-btns"><button class="btn" id="openLogs">Protokolle</button><button class="btn primary" id="copyReport">Fehlerbericht kopieren</button></span></div>
       </div>
       <div class="card">
         <h3>Start</h3>

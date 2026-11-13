@@ -176,10 +176,29 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   assert.ok(si.memTotal > 0 && si.disk && si.disk.total > 0 && si.cpu >= 0 && si.cpu <= 100);
   console.log(`„Systemstatus“ → ${(await a.handle("systemstatus")).say}`);
 
+  // Screenshot: ganzer Bildschirm und Fenster (Editor), Datei muss ein PNG sein
+  const fsx = require("node:fs");
+  const shotDir = fsx.mkdtempSync(path.join(os.tmpdir(), "cw-shot-"));
+  const shotActions = createActions({ screenshotDir: shotDir });
+  const sc = await shotActions.screenshot({ mode: "screen" });
+  console.log("Screenshot Bildschirm:", JSON.stringify(sc));
+  assert.equal(sc.ok, true, sc.error);
+  assert.equal(fsx.readFileSync(sc.file).subarray(1, 4).toString(), "PNG");
+  await actions.run({ target: "notepad.exe" });
+  await wait(2500);
+  await actions.window({ op: "focus", match: "notepad" });
+  await wait(500);
+  const sw = await shotActions.screenshot({ mode: "window" });
+  console.log("Screenshot Fenster:", JSON.stringify(sw));
+  assert.equal(sw.ok, true, sw.error);
+  assert.ok(sw.width < sc.width || sw.height < sc.height, "Fenster-Screenshot sollte kleiner sein als der Bildschirm");
+  execFileSync("taskkill", ["/IM", "notepad.exe", "/F"]);
+  console.log("Screenshot: ok");
+
   // Alle PowerShell-Skripte müssen sich fehlerfrei einlesen lassen (auch Teile, die hier nicht laufen)
   const ws = require("../src/core/winscripts");
   const scripts = { media: ws.mediaSessionScript("info", "amazon"), browser: ws.browserScript("closeMatching", "youtube"), window: ws.windowScript("focus", "notepad"), amazon: ws.amazonMusicScript("blinding lights (live)"),
-    type: ws.typeTextScript("hallo (welt)", 1), volume: ws.appVolumeScript("spotify", "down", 0.2), system: ws.systemScript() };
+    type: ws.typeTextScript("hallo (welt)", 1), volume: ws.appVolumeScript("spotify", "down", 0.2), system: ws.systemScript(), screenshot: ws.screenshotScript("C:\\x.png", "window", 1) };
   for (const [name, sc] of Object.entries(scripts)) {
     const f = path.join(os.tmpdir(), `cw-${name}.ps1`);
     require("node:fs").writeFileSync(f, "\ufeff" + sc);

@@ -107,3 +107,7 @@ body[data-mode="error"] .status { color: var(--bad); }
 .meter span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7c6cff, #22d3ee); transition: width .08s linear; }
 .alias { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, .06); font-size: 13px; }
 [hidden] { display: none !important; }
+
+/* Hinweis oben, wenn Updates klemmen */
+.banner { margin: 8px 16px 0; padding: 10px 12px; border-radius: 12px; background: rgba(250, 204, 21, .1); border: 1px solid rgba(250, 204, 21, .45); font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.banner-btns { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -1,0 +1,8 @@
+{
+  "id": "screenshot",
+  "name": "Screenshot",
+  "version": "1.0.0",
+  "author": "CommandWave",
+  "description": "„Mach einen Screenshot“ (ganzer Bildschirm) oder „Screenshot vom Fenster“ – gespeichert unter Bilder → Screenshots. „Zeig den letzten Screenshot“. English: „Take a screenshot“.",
+  "main": "main.js"
+}

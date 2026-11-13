@@ -13,7 +13,7 @@ const path = require("node:path");
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const VERSION = /^\d+(\.\d+){0,3}([-+][0-9A-Za-z.]+)?$/;
-const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "window", "amazonMusic", "typeText", "appVolume", "keys", "shell", "sequence", "none"];
+const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "window", "amazonMusic", "typeText", "appVolume", "screenshot", "keys", "shell", "sequence", "none"];
 const numbers = require("./numbers");
 
 /** mod.json prüfen → { mod } oder { error } */
@@ -136,6 +136,12 @@ function makeApi(mod, base, host, commands, slots, info) {
     systemInfo: () => host.actions.systemInfo({}),
     /** Zahlen & Rechnen: api.numbers.evaluate("fünf meilen in kilometer", "de"), .slotValues("de", 100) (ab 1.6) */
     numbers,
+    /** Bildschirmfoto: api.screenshot("screen" | "window") → { ok, file } (ab 1.7) */
+    screenshot: (mode) => host.actions.screenshot({ mode }),
+    /** Ton im Fenster: api.sound("alarm", true) startet den Weckton (wird langsam lauter), false stoppt ihn (ab 1.7) */
+    sound: (name, on = true) => host.sound?.(String(name), !!on),
+    /** Ordner/Datei im Explorer zeigen */
+    reveal: (file) => host.reveal?.(file),
     notify: (title, body) => host.notify?.(title, body),
     log: (...a) => host.log?.(`[${mod.id}]`, ...a),
     /** kleiner Speicher je Mod (JSON) */
