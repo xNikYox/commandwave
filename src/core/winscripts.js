@@ -236,6 +236,8 @@ function amazonMusicScript(query, { like = "Amazon Music*" } = {}) {
     '[DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);',
     '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);',
     '[DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint f, uint t, out IntPtr r);',
+    '[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);',
+    '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
     '[DllImport("oleacc.dll")] public static extern int AccessibleObjectFromWindow(IntPtr h, uint id, ref Guid iid, [MarshalAs(UnmanagedType.IUnknown)] out object o);',
     "'@",
     `  $q = ${psq(query)}`,
@@ -287,11 +289,16 @@ function amazonMusicScript(query, { like = "Amazon Music*" } = {}) {
     "  if (-not $edit) { Out @{ ok = $false; step = 'suchfeld'; error = 'Suchfeld nicht gefunden'; dump = (@('Fenster: ' + (@($render).Count) + ' Chromium-Fenster') + ($roots | ForEach-Object { Dump $_ })) } }",
     "  try { $edit.SetFocus() } catch { $null = Click $edit }",
     "  Start-Sleep -Milliseconds 200",
-    // Text tippen (Sonderzeichen für SendKeys maskieren), vorher Inhalt markieren
-    "  [System.Windows.Forms.SendKeys]::SendWait('^a')",
-    "  [System.Windows.Forms.SendKeys]::SendWait([regex]::Replace($q, '[+^%~(){}\\[\\]]', '{$0}'))",
+    // Text direkt ins Feld setzen (klappt auch, wenn Windows das Fenster nicht nach vorne lässt); sonst tippen
+    "  $typed = 'wert'",
+    "  try { $edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($q) } catch { $typed = 'tasten' }",
+    "  if ($typed -eq 'tasten') { [System.Windows.Forms.SendKeys]::SendWait('^a'); [System.Windows.Forms.SendKeys]::SendWait([regex]::Replace($q, '[+^%~(){}\\[\\]]', '{$0}')) }",
     "  Start-Sleep -Milliseconds 300",
-    "  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')",
+    "  $value = ''; try { $value = $edit.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value } catch {}",
+    // Enter: direkt an das Chromium-Fenster schicken (Fokus liegt im Suchfeld) – vorne oder nicht
+    "  $target = if (@($render).Count) { $render[0] } else { $h }",
+    "  $fg = [CW.AM]::GetForegroundWindow() -eq $h",
+    "  if ($fg) { [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') } else { $null = [CW.AM]::PostMessage($target, 0x100, [IntPtr]0x0D, [IntPtr]0x001C0001); $null = [CW.AM]::PostMessage($target, 0x102, [IntPtr]0x0D, [IntPtr]0x001C0001); $null = [CW.AM]::PostMessage($target, 0x101, [IntPtr]0x0D, [IntPtr]0xC01C0001) }",
     // 3. Ergebnisse abwarten, ersten Abspielen-Knopf drücken (nicht den der Wiedergabeleiste unten)
     "  $wr = $root.Current.BoundingRectangle",
     "  $play = $null",
@@ -301,9 +308,9 @@ function amazonMusicScript(query, { like = "Amazon Music*" } = {}) {
     "    $btns = @($btns | Where-Object { $r = $_.Current.BoundingRectangle; $r.Width -gt 0 -and $r.Y -lt ($wr.Y + $wr.Height * 0.82) } | Sort-Object { $_.Current.BoundingRectangle.Y }, { $_.Current.BoundingRectangle.X })",
     "    $play = $btns | Select-Object -First 1",
     "  }",
-    "  if (-not $play) { Out @{ ok = $false; step = 'abspielen'; error = 'kein Abspielen-Knopf'; searched = $true; dump = ($roots | ForEach-Object { Dump $_ }) } }",
+    "  if (-not $play) { Out @{ ok = $false; step = 'abspielen'; error = 'kein Abspielen-Knopf'; searched = $true; typed = $typed; value = $value; foreground = $fg; dump = ($roots | ForEach-Object { Dump $_ }) } }",
     "  $how = Click $play",
-    "  Out @{ ok = $true; started = $started; clicked = $play.Current.Name; how = $how }",
+    "  Out @{ ok = $true; started = $started; clicked = $play.Current.Name; how = $how; typed = $typed; value = $value; foreground = $fg }",
     "} catch { Out @{ ok = $false; step = 'fehler'; error = $_.Exception.Message } }",
   ].join("\n");
 }
