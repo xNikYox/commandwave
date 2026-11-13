@@ -823,7 +823,13 @@ async function wakeFreeTest() {
   // Whisper (genaue Erkennung): Namen-Sätze und echte menschliche Aufnahmen (Wikimedia, Deutsch)
   out.whisper = { warm: await speech.warmWhisper(), results: [] };
   for (const a of audio.filter((x) => x.kind === "tail" || x.kind === "human")) {
-    const pcm = await decode(a.url);
+    let pcm;
+    try {
+      pcm = await decode(a.url);
+    } catch (e) {
+      out.whisper.results.push({ said: a.text, error: "nicht lesbar: " + e.message });
+      continue;
+    }
     let vosk = "";
     if (a.kind === "human") {
       const rec = new speech.models[a.lang].KaldiRecognizer(16000, JSON.stringify(state.grammars[a.lang]));

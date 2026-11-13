@@ -607,6 +607,7 @@ async function smokeExtras() {
       const api = await (await fetch(`https://commons.wikimedia.org/w/api.php?action=query&titles=File:De-${w}.ogg&prop=imageinfo&iiprop=url&format=json`, { headers: { "User-Agent": "CommandWave-Test/1.0" } })).json();
       const url = Object.values(api.query.pages)[0].imageinfo[0].url;
       const buf = Buffer.from(await (await fetch(url, { headers: { "User-Agent": "CommandWave-Test/1.0" } })).arrayBuffer());
+      if (buf.subarray(0, 4).toString() !== "OggS") throw new Error("keine Ogg-Datei (" + buf.length + " Bytes)");
       fs.writeFileSync(path.join(dir, `mensch${i}.ogg`), buf);
       out.audio.push({ text: w.toLowerCase(), lang: "de", kind: "human", url: `cw://app/testaudio/mensch${i}.ogg` });
     } catch (e) {
