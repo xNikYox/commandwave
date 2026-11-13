@@ -141,7 +141,8 @@ class Assistant {
   withWords_(m) {
     const f = m.slots[P.FREE];
     if (!f) return m;
-    const t = P.applyWords(f.key, this.aliases[WORDS]);
+    // erst gelernte Wörter, dann einzeln gehörte Buchstaben zur Abkürzung: „s d p“ → „SDP“
+    const t = P.applyWords(f.key, this.aliases[WORDS]).replace(/\b\p{L}(?: \p{L}\b)+/gu, (m) => m.replace(/ /g, "").toUpperCase());
     return { ...m, slots: { ...m.slots, [P.FREE]: { ...f, key: t, value: t } } };
   }
 

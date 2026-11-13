@@ -219,7 +219,7 @@ function windowScript(op, match = "", skipPid = 0) {
  * Amazon Music hat keine Schnittstelle zum Abspielen – findet das Skript etwas nicht, liefert es eine Liste
  * der Bedienelemente mit (dump), damit man es anpassen kann.
  */
-function amazonMusicScript(query) {
+function amazonMusicScript(query, { like = "Amazon Music*" } = {}) {
   return [
     "$ErrorActionPreference = 'Stop'",
     "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
@@ -233,10 +233,15 @@ function amazonMusicScript(query) {
     '[DllImport("user32.dll")] public static extern void keybd_event(byte v, byte s, int f, int e);',
     '[DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);',
     '[DllImport("user32.dll")] public static extern void mouse_event(int f, int x, int y, int d, int e);',
+    '[DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);',
+    '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);',
+    '[DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint f, uint t, out IntPtr r);',
+    '[DllImport("oleacc.dll")] public static extern int AccessibleObjectFromWindow(IntPtr h, uint id, ref Guid iid, [MarshalAs(UnmanagedType.IUnknown)] out object o);',
     "'@",
     `  $q = ${psq(query)}`,
     "  $A = [Windows.Automation.AutomationElement]; $T = [Windows.Automation.TreeScope]; $C = [Windows.Automation.ControlType]",
-    "  function Win { Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and ($_.ProcessName -like 'Amazon Music*' -or $_.MainWindowTitle -like 'Amazon Music*') } | Select-Object -First 1 }",
+    `  $like = ${psq(like)}`, // Test: andere Chromium-App (Edge) mit Testseite
+    "  function Win { Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and ($_.ProcessName -like $like -or $_.MainWindowTitle -like $like) } | Select-Object -First 1 }",
     "  function Front($h) { if ([CW.AM]::IsIconic($h)) { $null = [CW.AM]::ShowWindow($h, 9) }; [CW.AM]::keybd_event(0x12, 0, 0, 0); [CW.AM]::keybd_event(0x12, 0, 2, 0); $null = [CW.AM]::SetForegroundWindow($h) }",
     "  function Of($root, $type) { $root.FindAll($T::Descendants, (New-Object Windows.Automation.PropertyCondition($A::ControlTypeProperty, $type))) }",
     // Liste der Bedienelemente für die Fehlersuche
@@ -250,7 +255,7 @@ function amazonMusicScript(query) {
     // 1. App finden oder starten
     "  $p = Win; $started = $false",
     "  if (-not $p) {",
-    "    $app = Get-StartApps | Where-Object { $_.Name -like 'Amazon Music*' } | Select-Object -First 1",
+    "    $app = Get-StartApps | Where-Object { $_.Name -like $like } | Select-Object -First 1",
     "    if (-not $app) { Out @{ ok = $false; step = 'app'; error = 'nicht installiert' } }",
     "    Start-Process explorer.exe ('shell:AppsFolder\\' + $app.AppID); $started = $true",
     "    for ($i = 0; $i -lt 60 -and -not $p; $i++) { Start-Sleep -Milliseconds 500; $p = Win }",
@@ -259,15 +264,27 @@ function amazonMusicScript(query) {
     "  }",
     "  $h = $p.MainWindowHandle; Front $h; Start-Sleep -Milliseconds 400",
     "  $root = $A::FromHandle($h)",
+    // Amazon Music ist eine Chromium-App: die Bedienelemente gibt sie erst frei, wenn man ihr inneres Fenster
+    // (Chrome_RenderWidgetHostHWND) wie ein Bildschirmleser anfragt – sonst sieht man nur „Chrome Legacy Window“
+    "  function Kids($w) { $c = [IntPtr]::Zero; $out = @(); do { $c = [CW.AM]::FindWindowEx($w, $c, $null, $null); if ($c -ne [IntPtr]::Zero) { $out += $c; $out += Kids $c } } while ($c -ne [IntPtr]::Zero); $out }",
+    "  function Cls($w) { $sb = New-Object System.Text.StringBuilder 256; $null = [CW.AM]::GetClassName($w, $sb, 256); $sb.ToString() }",
+    "  $render = @(Kids $h | Where-Object { (Cls $_) -eq 'Chrome_RenderWidgetHostHWND' })",
+    "  foreach ($w in $render) {",
+    "    $r = [IntPtr]::Zero; foreach ($l in @(-4, -25, 1)) { $null = [CW.AM]::SendMessageTimeout($w, 0x3D, [IntPtr]::Zero, [IntPtr]$l, 2, 1000, [ref]$r) }",
+    "    try { $g = [Guid]'618736e0-3c3d-11cf-810c-00aa00389b71'; $o = $null; $null = [CW.AM]::AccessibleObjectFromWindow($w, [uint32]4294967292, [ref]$g, [ref]$o) } catch {}",
+    "    try { $null = $A::FromHandle($w) } catch {}",
+    "  }",
+    // Inhalt zuerst (so wird nie eine Adressleiste o. Ä. statt des Suchfelds der Seite genommen)
+    "  $roots = @($render | ForEach-Object { try { $A::FromHandle($_) } catch {} } | Where-Object { $_ }) + @($root)",
     // 2. Suchfeld (die App lädt ihre Oberfläche nach – ein paar Sekunden warten)
     "  $edit = $null",
-    "  for ($i = 0; $i -lt 24 -and -not $edit; $i++) {",
-    "    $edits = @(Of $root $C::Edit)",
+    "  for ($i = 0; $i -lt 30 -and -not $edit; $i++) {",
+    "    $edits = @($roots | ForEach-Object { Of $_ $C::Edit })",
     "    $edit = $edits | Where-Object { $_.Current.Name -match '(?i)such|search' } | Select-Object -First 1",
     "    if (-not $edit) { $edit = $edits | Select-Object -First 1 }",
     "    if (-not $edit) { Start-Sleep -Milliseconds 500 }",
     "  }",
-    "  if (-not $edit) { Out @{ ok = $false; step = 'suchfeld'; error = 'Suchfeld nicht gefunden'; dump = (Dump $root) } }",
+    "  if (-not $edit) { Out @{ ok = $false; step = 'suchfeld'; error = 'Suchfeld nicht gefunden'; dump = (@('Fenster: ' + (@($render).Count) + ' Chromium-Fenster') + ($roots | ForEach-Object { Dump $_ })) } }",
     "  try { $edit.SetFocus() } catch { $null = Click $edit }",
     "  Start-Sleep -Milliseconds 200",
     // Text tippen (Sonderzeichen für SendKeys maskieren), vorher Inhalt markieren
@@ -280,11 +297,11 @@ function amazonMusicScript(query) {
     "  $play = $null",
     "  for ($i = 0; $i -lt 16 -and -not $play; $i++) {",
     "    Start-Sleep -Milliseconds 500",
-    "    $btns = @(Of $root $C::Button) | Where-Object { $_.Current.Name -match '(?i)abspielen|wiedergeben|wiedergabe starten|^play\\b|play now|jetzt h' -and $_.Current.Name -notmatch '(?i)pause|zufall|shuffle|vorschau|preview' }",
+    "    $btns = @($roots | ForEach-Object { Of $_ $C::Button }) | Where-Object { $_.Current.Name -match '(?i)abspielen|wiedergeben|wiedergabe starten|^play\\b|play now|jetzt h' -and $_.Current.Name -notmatch '(?i)pause|zufall|shuffle|vorschau|preview' }",
     "    $btns = @($btns | Where-Object { $r = $_.Current.BoundingRectangle; $r.Width -gt 0 -and $r.Y -lt ($wr.Y + $wr.Height * 0.82) } | Sort-Object { $_.Current.BoundingRectangle.Y }, { $_.Current.BoundingRectangle.X })",
     "    $play = $btns | Select-Object -First 1",
     "  }",
-    "  if (-not $play) { Out @{ ok = $false; step = 'abspielen'; error = 'kein Abspielen-Knopf'; searched = $true; dump = (Dump $root) } }",
+    "  if (-not $play) { Out @{ ok = $false; step = 'abspielen'; error = 'kein Abspielen-Knopf'; searched = $true; dump = ($roots | ForEach-Object { Dump $_ }) } }",
     "  $how = Click $play",
     "  Out @{ ok = $true; started = $started; clicked = $play.Current.Name; how = $how }",
     "} catch { Out @{ ok = $false; step = 'fehler'; error = $_.Exception.Message } }",

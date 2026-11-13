@@ -195,6 +195,31 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   execFileSync("taskkill", ["/IM", "notepad.exe", "/F"]);
   console.log("Screenshot: ok");
 
+  // Amazon-Music-Steuerung an einer echten Chromium-App prüfen: Edge im App-Modus mit Testseite (Suchfeld + Abspielen)
+  const edgeExe = ["C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"].find((p) => require("node:fs").existsSync(p));
+  if (edgeExe) {
+    const page = "<title>CW-Musiktest</title><input aria-label='Suchen' onkeydown=\"if(event.key==='Enter'){document.title='CW-Musiktest gesucht '+this.value;document.getElementById('r').hidden=false}\">" +
+      "<div id='r' hidden><h2>Ergebnisse</h2><button onclick=\"document.title='CW-Musiktest gespielt'\">Abspielen</button></div><div style='height:600px'></div><footer><button>Wiedergabe</button></footer>";
+    const prof = require("node:fs").mkdtempSync(path.join(os.tmpdir(), "cw-edge2-"));
+    require("node:child_process").spawn(edgeExe, ["--no-first-run", "--no-default-browser-check", "--user-data-dir=" + prof, "--app=data:text/html," + encodeURIComponent(page)], { detached: true, stdio: "ignore" }).unref();
+    await wait(6000);
+    const pj = (sc) => { const r = execFileSync("powershell.exe", ["-NoProfile", "-EncodedCommand", Buffer.from(sc, "utf16le").toString("base64")]).toString(); return JSON.parse(r.split(/\r?\n/).reverse().find((l) => l.trim().startsWith("{"))); };
+    const res = pj(require("../src/core/winscripts").amazonMusicScript("SDP (live)", { like: "CW-Musiktest*" }));
+    console.log("Chromium-Steuerung (Edge-Testseite):", JSON.stringify(res).slice(0, 600));
+    await wait(1500);
+    const title = execFileSync("powershell.exe", ["-NoProfile", "-Command", "(Get-Process msedge | Where-Object { $_.MainWindowTitle -like 'CW-Musiktest*' } | Select-Object -First 1).MainWindowTitle"]).toString().trim();
+    console.log("Titel danach:", title);
+    try {
+      execFileSync("taskkill", ["/IM", "msedge.exe", "/F"], { stdio: "ignore" });
+    } catch {
+      // schon zu
+    }
+    assert.equal(res.ok, true, "Suchfeld/Knopf in Chromium-App nicht gefunden: " + JSON.stringify(res));
+    assert.equal(res.clicked, "Abspielen");
+    assert.equal(title, "CW-Musiktest gespielt", "Abspielen wurde nicht gedrückt");
+    console.log("Amazon-Music-Steuerung an Chromium-App: ok");
+  }
+
   // Alle PowerShell-Skripte müssen sich fehlerfrei einlesen lassen (auch Teile, die hier nicht laufen)
   const ws = require("../src/core/winscripts");
   const scripts = { media: ws.mediaSessionScript("info", "amazon"), browser: ws.browserScript("closeMatching", "youtube"), window: ws.windowScript("focus", "notepad"), amazon: ws.amazonMusicScript("blinding lights (live)"),

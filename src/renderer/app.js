@@ -576,6 +576,11 @@ $("#learnGo").onclick = async () => {
       if (state.settings.beep) speech.beep(true);
       const r = await speech.listenFree(lang, { deviceId: state.settings.micId, maxSeconds: 4, onPartial: (x) => (t.textContent = `(${i}/3) „${x}“`) });
       if (r.text) got.push(r.text);
+      // Namen hört CommandWave später mit Whisper – also auch mit Whisper lernen
+      if (state.settings.whisper) {
+        const w = await speech.transcribe(lang);
+        if (w.ok && w.text) got.push(w.text);
+      }
     }
     if (!got.length) t.textContent = "Nichts gehört – nochmal versuchen.";
     else {

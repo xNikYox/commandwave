@@ -70,3 +70,9 @@ test("freier Rest bei Suche und Erinnerung; ohne Aufnahme nachfragen; eingetippt
   await a.handleMulti([{ lang: "de", text: "spiel meine playlist auf amazon music", conf: 0.9 }]);
   assert.deepEqual(calls, ["ask", "amazon gefragt"]);
 });
+
+test("einzeln gehörte Buchstaben werden zur Abkürzung („s d p“ → SDP)", async () => {
+  const { a, calls } = setup();
+  await a.handleMulti([{ lang: "de", text: "spiel lieder von s d p" }], "de", { confirm: false });
+  assert.deepEqual(calls, ["amazon SDP"]);
+});
