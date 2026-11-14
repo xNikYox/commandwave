@@ -281,9 +281,11 @@ function amazonMusicScript(query, { like = "Amazon Music*" } = {}) {
     // 2. Suchfeld (die App lädt ihre Oberfläche nach – ein paar Sekunden warten)
     "  $edit = $null",
     "  for ($i = 0; $i -lt 30 -and -not $edit; $i++) {",
-    "    $edits = @($roots | ForEach-Object { Of $_ $C::Edit } | Where-Object { $_.Current.Name -notmatch '(?i)address|adress|url' })", // keine Adressleiste
+    // nur bedienbare Felder im Inhalt: keine Adressleiste, keine versteckten Felder der App-Oberfläche („Textfield“)
+    "    $edits = @($roots | ForEach-Object { Of $_ $C::Edit } | Where-Object { $_.Current.Name -notmatch '(?i)address|adress|url' -and $_.Current.ClassName -notmatch '(?i)^textfield$|omnibox' -and -not $_.Current.IsOffscreen -and $_.Current.IsEnabled })",
     "    $edit = $edits | Where-Object { $_.Current.Name -match '(?i)such|search' } | Select-Object -First 1",
-    "    if (-not $edit) { $edit = $edits | Select-Object -First 1 }",
+    // erst nach ~5 s ein Feld ohne passenden Namen nehmen (die Seite meldet ihre Elemente mit Verzögerung)
+    "    if (-not $edit -and $i -ge 10) { $edit = $edits | Where-Object { $_.Current.IsKeyboardFocusable } | Select-Object -First 1 }",
     "    if (-not $edit) { Start-Sleep -Milliseconds 500 }",
     "  }",
     "  if (-not $edit) { Out @{ ok = $false; step = 'suchfeld'; error = 'Suchfeld nicht gefunden'; dump = (@('Fenster: ' + (@($render).Count) + ' Chromium-Fenster') + ($roots | ForEach-Object { Dump $_ })) } }",
