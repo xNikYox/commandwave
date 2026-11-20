@@ -4,12 +4,13 @@
 //            Windows-Einstellung         { "type": "open", "target": "ms-settings:display" }
 //   media    Lautstärke & Musik          { "type": "media", "key": "volume_up", "times": 5 }
 //   window   Fenster steuern            { "type": "window", "op": "minimize" }   (maximize, restore, left, right, desktop, focus + match)
+//   volume   Gesamtlautstärke            { "type": "volume", "value": 0.3 }   (ab 2.0)
 //   keys     Tasten drücken              { "type": "keys", "keys": "^c" }   (Schreibweise wie SendKeys)
 //   shell    PowerShell-Befehl           { "type": "shell", "command": "Stop-Computer" }   ← mächtig, nur eigene Mods
 //   sequence mehrere Schritte            { "type": "sequence", "steps": [ {…}, {…} ] }
 //   say/none nur antworten
 const { spawn } = require("node:child_process");
-const { mediaSessionScript, browserScript, windowScript, amazonMusicScript, typeTextScript, appVolumeScript, systemScript, screenshotScript } = require("./winscripts");
+const { mediaSessionScript, browserScript, windowScript, amazonMusicScript, playInAppScript, typeTextScript, appVolumeScript, volumeScript, systemScript, screenshotScript } = require("./winscripts");
 const os = require("node:os");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -149,6 +150,29 @@ function createActions(env = {}) {
       }
       if (r) delete r.dump;
       return r;
+    },
+    /** Chromium-App (Spotify …): Adresse öffnen, ersten Abspielen-Knopf drücken → { ok, clicked } oder { ok: false, step, error } */
+    async playInApp({ like = "", uri = "" }) {
+      if (!like) throw new Error("playInApp: like fehlt");
+      const r = await powershellJson(playInAppScript(String(like), String(uri)));
+      if (r && r.dump && env.diagDir) {
+        try {
+          fs.appendFileSync(path.join(env.diagDir, "app-steuerung.log"), `[${new Date().toISOString()}] ${like} ${r.step}: ${r.error} – ${uri}\n${[].concat(r.dump).join("\n")}\n\n`);
+        } catch {
+          // nicht schreibbar
+        }
+      }
+      if (r) delete r.dump;
+      return r;
+    },
+    /** Gesamtlautstärke setzen: value 0..1 → { ok, volume } */
+    async volume({ value = 0.5 }) {
+      return powershellJson(volumeScript(Number(value)));
+    },
+    /** Eigenes PowerShell-Skript (für Skript-Mods) → letzte JSON-Zeile der Ausgabe */
+    async powershellJson({ script = "" }) {
+      if (!script) throw new Error("powershellJson: script fehlt");
+      return powershellJson(String(script));
     },
     /** Text ins vorderste Fenster tippen (nicht in CommandWave selbst) */
     async typeText({ text = "" }) {

@@ -1,6 +1,7 @@
 // CommandWave – der Assistent: Mods laden, gesprochenen Text verstehen, Aktion ausführen, Antwort liefern.
 const P = require("./phrases");
 const { loadAll } = require("./mods");
+const numbers = require("./numbers");
 
 const UNKNOWN = "Diesen Befehl kenne ich leider nicht.";
 const FAILED = "Das hat leider nicht geklappt.";
@@ -19,7 +20,7 @@ const PENDING_MS = 30000;
 const WORDS = "_woerter"; // gelernte eigene Wörter (für frei erkannten Text, z. B. Suchbegriffe)
 
 class Assistant {
-  /** opts = { modsDir, actions, dataDir, say, notify, log, disabled: [] } */
+  /** opts = { modsDir, actions, dataDir, say, notify, log, disabled: [], appVersion, ask, showList, modSettings, routines } */
   constructor(opts) {
     this.opts = opts;
     this.mods = [];
@@ -48,7 +49,7 @@ class Assistant {
 
   reload(disabled = this.opts.disabled || []) {
     const host = { actions: this.opts.actions, say: this.opts.say, notify: this.opts.notify, log: this.opts.log, dataDir: this.opts.dataDir, sound: this.opts.sound, reveal: this.opts.reveal,
-      appVersion: this.opts.appVersion };
+      appVersion: this.opts.appVersion, modSettings: this.opts.modSettings, showList: this.opts.showList, routines: this.opts.routines };
     const r = loadAll(this.opts.modsDir, host, disabled);
     this.mods = r.mods;
     this.errors = r.errors;
@@ -131,7 +132,10 @@ class Assistant {
       const words = text.split(" ");
       let k = 0;
       for (let i = 0; i < Math.min(words.length, 6); i++) if (known.has(words[i])) k = i + 1;
-      const rest = words.slice(k).join(" ");
+      // {frei} in der Mitte („spiel {frei} auf spotify“): bekannte Wörter am Ende auch weglassen
+      let end = words.length;
+      if (P.freeInMiddle(cmd)) while (end > k && known.has(words[end - 1])) end--;
+      const rest = words.slice(k, end).join(" ");
       if (!rest) return { ok: false, say: TEXT[lang].unsure, heard: text, lang };
       m = { command: cmd, score: NEAR, slots: { [P.FREE]: { key: rest, value: rest, heard: rest } } };
     }
@@ -197,6 +201,15 @@ class Assistant {
       ask: async (question) => {
         const t = this.opts.ask ? await this.opts.ask(String(question), lang) : null;
         return t ? P.applyWords(t, this.aliases[WORDS]) : t;
+      },
+      // Auswahl (ab 2.0): Liste im Fenster/Overlay zeigen, „Nummer zwei“ hören (oder anklicken) → 0..n-1 oder null
+      choose: async (question, items) => {
+        const list = (items || []).map(String);
+        this.opts.showList?.(String(question), list, { choose: true });
+        const t = this.opts.ask ? await this.opts.ask(String(question), lang) : null;
+        this.opts.showList?.("", []);
+        const n = numbers.pick(t, list.length, lang);
+        return n ? n - 1 : null;
       } };
     try {
       let say = c.say != null ? P.fill(c.say, m.slots, {}, lang) : null;

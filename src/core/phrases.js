@@ -146,8 +146,12 @@ function matchSeq(seq, words, slotValues) {
           if (sim >= WORD_MIN) take(go(i + 1, j + 1), sim);
         } else if (p.t === "slot" && p.v === FREE) {
           // {frei}: der ganze Rest des Satzes (Namen, Suchbegriffe). Etwas weniger wert als ein echter Treffer,
-          // damit feste Befehle („spiel weiter“) immer gewinnen
-          take(go(i + 1, words.length), 1.2, { [FREE]: { key: words.slice(j).join(" "), value: words.slice(j).join(" "), heard: words.slice(j).join(" ") } });
+          // damit feste Befehle („spiel weiter“) immer gewinnen. In der Mitte („spiel {frei} auf spotify“, ab 2.0):
+          // alles bis zu den Musterwörtern danach
+          for (let k = i === seq.length - 1 ? words.length : j + 1; k <= words.length; k++) {
+            const t = words.slice(j, k).join(" ");
+            take(go(i + 1, k), 1.2, { [FREE]: { key: t, value: t, heard: t } });
+          }
         } else if (p.t === "slot") {
           for (let len = 1; len <= 4 && j + len <= words.length; len++) {
             const s = bestSlot(words.slice(j, j + len), slotValues[p.v]);
@@ -219,6 +223,8 @@ function grammar(compiled, slotValues = {}, limit = 6000) {
 const FREE = "frei";
 /** Hat der Befehl einen freien Rest? */
 const hasFree = (c) => c.variants.some((v) => v.some((p) => p.t === "slot" && p.v === FREE));
+/** Steht {frei} mitten im Satz („spiel {frei} auf spotify“)? */
+const freeInMiddle = (c) => c.variants.some((v) => v.some((p, i) => p.t === "slot" && p.v === FREE && i < v.length - 1));
 
 /** Ja/Nein-Antworten (für Rückfragen) */
 const YES = { de: ["ja", "ja bitte", "genau", "richtig", "jawohl", "ja genau"], en: ["yes", "yes please", "yeah", "yep", "correct", "right"] };
@@ -323,4 +329,4 @@ function fill(template, slots = {}, extra = {}, lang = "de") {
 
 const capitalize = (s) => String(s).replace(/^\p{L}/u, (c) => c.toUpperCase());
 
-module.exports = { FREE, hasFree, YES, NO, yesNo, sayable, applyWords, normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };
+module.exports = { FREE, hasFree, freeInMiddle, YES, NO, yesNo, sayable, applyWords, normalize, parse, expand, similarity, match, matchSeq, compile, grammar, compactGrammar, vocabulary, fill };

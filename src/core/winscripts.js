@@ -507,4 +507,115 @@ function screenshotScript(file, mode = "screen", skipPid = 0) {
   ].join("\n");
 }
 
-module.exports = { mediaSessionScript, browserScript, windowScript, amazonMusicScript, typeTextScript, appVolumeScript, systemScript, screenshotScript, MIXER_CS, BROWSERS, TAB_KEYS, psq };
+/**
+ * Chromium-App (Spotify …) per Bedienungshilfe: Adresse öffnen (z. B. spotify:search:coldplay), App nach vorne holen,
+ * dann den ersten Abspielen-Knopf im Inhalt drücken (nicht in der Seitenleiste links, nicht in der Wiedergabeleiste unten).
+ * like = Prozess- oder Fenstername mit * (z. B. "Spotify*"). Findet das Skript nichts, kommt eine Liste der Bedienelemente mit (dump).
+ */
+function playInAppScript(like, uri = "", { left = 0.2 } = {}) {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+    "function Out($o) { $o | ConvertTo-Json -Compress -Depth 4; exit }",
+    "try {",
+    "  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes",
+    "  Add-Type -Namespace CW -Name PA -MemberDefinition @'",
+    '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);',
+    '[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);',
+    '[DllImport("user32.dll")] public static extern void keybd_event(byte v, byte s, int f, int e);',
+    '[DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);',
+    '[DllImport("user32.dll")] public static extern void mouse_event(int f, int x, int y, int d, int e);',
+    '[DllImport("user32.dll")] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);',
+    '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);',
+    '[DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint f, uint t, out IntPtr r);',
+    "'@",
+    `  $like = ${psq(like)}; $uri = ${psq(uri)}; $left = [double]${Number(left) || 0}`,
+    "  $A = [Windows.Automation.AutomationElement]; $T = [Windows.Automation.TreeScope]; $C = [Windows.Automation.ControlType]",
+    "  function Win { Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and ($_.ProcessName -like $like -or $_.MainWindowTitle -like $like) } | Select-Object -First 1 }",
+    "  function Dump($root) { @($root.FindAll($T::Descendants, [Windows.Automation.Condition]::TrueCondition) | Select-Object -First 150 | ForEach-Object { $_.Current.ControlType.ProgrammaticName.Replace('ControlType.', '') + ': ' + $_.Current.Name } | Where-Object { $_ -notmatch ': $' }) }",
+    "  $started = -not (Win)",
+    "  if ($uri) { Start-Process $uri }",
+    "  $p = $null; for ($i = 0; $i -lt 40 -and -not $p; $i++) { $p = Win; if (-not $p) { Start-Sleep -Milliseconds 500 } }",
+    "  if (-not $p) { Out @{ ok = $false; step = 'app'; error = 'nicht installiert' } }",
+    "  if ($started) { Start-Sleep -Seconds 4 } else { Start-Sleep -Milliseconds 1500 }",
+    "  $h = $p.MainWindowHandle",
+    "  if ([CW.PA]::IsIconic($h)) { $null = [CW.PA]::ShowWindow($h, 9) }; [CW.PA]::keybd_event(0x12, 0, 0, 0); [CW.PA]::keybd_event(0x12, 0, 2, 0); $null = [CW.PA]::SetForegroundWindow($h)",
+    // Chromium gibt seine Bedienelemente erst frei, wenn man das innere Fenster wie ein Bildschirmleser anfragt
+    "  function Kids($w) { $c = [IntPtr]::Zero; $out = @(); do { $c = [CW.PA]::FindWindowEx($w, $c, $null, $null); if ($c -ne [IntPtr]::Zero) { $out += $c; $out += Kids $c } } while ($c -ne [IntPtr]::Zero); $out }",
+    "  function Cls($w) { $sb = New-Object System.Text.StringBuilder 256; $null = [CW.PA]::GetClassName($w, $sb, 256); $sb.ToString() }",
+    "  $render = @(Kids $h | Where-Object { (Cls $_) -eq 'Chrome_RenderWidgetHostHWND' })",
+    "  foreach ($w in $render) { $r = [IntPtr]::Zero; foreach ($l in @(-4, -25, 1)) { $null = [CW.PA]::SendMessageTimeout($w, 0x3D, [IntPtr]::Zero, [IntPtr]$l, 2, 1000, [ref]$r) } }",
+    "  $root = $A::FromHandle($h)",
+    "  $roots = @($render | ForEach-Object { try { $A::FromHandle($_) } catch {} } | Where-Object { $_ }) + @($root)",
+    "  $wr = $root.Current.BoundingRectangle",
+    "  $play = $null",
+    "  for ($i = 0; $i -lt 24 -and -not $play; $i++) {",
+    "    Start-Sleep -Milliseconds 500",
+    "    $btns = @($roots | ForEach-Object { $_.FindAll($T::Descendants, (New-Object Windows.Automation.PropertyCondition($A::ControlTypeProperty, $C::Button))) }) | Where-Object { $_.Current.Name -match '(?i)abspielen|wiedergeben|^play\\b|play now' -and $_.Current.Name -notmatch '(?i)pause|zufall|shuffle|vorschau|preview' }",
+    "    $btns = @($btns | Where-Object { $r = $_.Current.BoundingRectangle; $r.Width -gt 0 -and $r.Y -lt ($wr.Y + $wr.Height * 0.82) -and $r.X -gt ($wr.X + $wr.Width * $left) } | Sort-Object { $_.Current.BoundingRectangle.Y }, { $_.Current.BoundingRectangle.X })",
+    "    $play = $btns | Select-Object -First 1",
+    "  }",
+    "  if (-not $play) { Out @{ ok = $false; step = 'abspielen'; error = 'kein Abspielen-Knopf'; dump = ($roots | ForEach-Object { Dump $_ }) } }",
+    "  $how = 'invoke'",
+    "  try { $play.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {",
+    "    $r = $play.Current.BoundingRectangle; $null = [CW.PA]::SetCursorPos([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2)); Start-Sleep -Milliseconds 250",
+    "    [CW.PA]::mouse_event(2, 0, 0, 0, 0); [CW.PA]::mouse_event(4, 0, 0, 0, 0); $how = 'klick'",
+    "  }",
+    "  Out @{ ok = $true; started = $started; clicked = $play.Current.Name; how = $how }",
+    "} catch { Out @{ ok = $false; step = 'fehler'; error = $_.Exception.Message } }",
+  ].join("\n");
+}
+
+/** C#-Teil für die Gesamtlautstärke (Core Audio: IAudioEndpointVolume des Standard-Ausgabegeräts) */
+const VOLUME_CS = String.raw`
+using System; using System.Runtime.InteropServices;
+namespace CWVol {
+  [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom {}
+  [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IMMDeviceEnumerator {
+    int NotImpl1();
+    [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice dev);
+  }
+  [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IMMDevice {
+    [PreserveSig] int Activate(ref Guid iid, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o);
+  }
+  [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IAudioEndpointVolume {
+    int RegisterControlChangeNotify(IntPtr p); int UnregisterControlChangeNotify(IntPtr p); int GetChannelCount(out int n);
+    int SetMasterVolumeLevel(float db, ref Guid ctx);
+    [PreserveSig] int SetMasterVolumeLevelScalar(float v, ref Guid ctx);
+    int GetMasterVolumeLevel(out float db);
+    [PreserveSig] int GetMasterVolumeLevelScalar(out float v);
+    int SetChannelVolumeLevel(uint ch, float db, ref Guid ctx); int SetChannelVolumeLevelScalar(uint ch, float v, ref Guid ctx);
+    int GetChannelVolumeLevel(uint ch, out float db); int GetChannelVolumeLevelScalar(uint ch, out float v);
+    [PreserveSig] int SetMute([MarshalAs(UnmanagedType.Bool)] bool m, ref Guid ctx);
+  }
+  public static class Master {
+    public static int Set(float v) {
+      IMMDevice dev; var en = (IMMDeviceEnumerator)(new MMDeviceEnumeratorCom());
+      if (en.GetDefaultAudioEndpoint(0, 1, out dev) != 0 || dev == null) return -1;
+      Guid iid = typeof(IAudioEndpointVolume).GUID; object o;
+      if (dev.Activate(ref iid, 23, IntPtr.Zero, out o) != 0) return -1;
+      var ep = (IAudioEndpointVolume)o; Guid g = Guid.Empty;
+      v = Math.Max(0f, Math.Min(1f, v));
+      ep.SetMasterVolumeLevelScalar(v, ref g); if (v > 0) ep.SetMute(false, ref g);
+      float now; ep.GetMasterVolumeLevelScalar(out now); return (int)Math.Round(now * 100);
+    }
+  }
+}`;
+
+/** Gesamtlautstärke auf value (0..1) setzen → { ok, volume } */
+function volumeScript(value) {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+    "try {",
+    "  Add-Type -TypeDefinition @'",
+    VOLUME_CS,
+    "'@",
+    `  $v = [CWVol.Master]::Set([float]${Math.max(0, Math.min(1, Number(value) || 0))})`,
+    "  [pscustomobject]@{ ok = ($v -ge 0); volume = $v; error = $(if ($v -lt 0) { 'kein Audiogerät' } else { $null }) } | ConvertTo-Json -Compress",
+    "} catch { [pscustomobject]@{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress }",
+  ].join("\n");
+}
+
+module.exports = { mediaSessionScript, browserScript, windowScript, amazonMusicScript, playInAppScript, typeTextScript, appVolumeScript, volumeScript, systemScript, screenshotScript, MIXER_CS, VOLUME_CS, BROWSERS, TAB_KEYS, psq };

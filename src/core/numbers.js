@@ -123,6 +123,30 @@ function slotValues(lang = "de", max = 100) {
   return out;
 }
 
+/** Ordnungszahlen für Auswahllisten („die zweite“, „the third“) */
+const ORDINALS = { erste: 1, erster: 1, erstes: 1, ersten: 1, zweite: 2, zweiter: 2, zweites: 2, zweiten: 2, dritte: 3, dritter: 3, drittes: 3, dritten: 3,
+  vierte: 4, vierter: 4, viertes: 4, vierten: 4, fünfte: 5, fünfter: 5, fünftes: 5, fünften: 5, sechste: 6, siebte: 7, achte: 8, neunte: 9, zehnte: 10,
+  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, letzte: -1, letzten: -1, last: -1 };
+
+/**
+ * Auswahl aus einer Liste: „Nummer drei“, „die zweite“, „3“, „eins“ → 1..max, sonst null
+ * (Antwort auf „Welche Nummer?“ – frei erkannt, also großzügig)
+ */
+function pick(text, max, lang = "de") {
+  const words = String(text || "").toLowerCase().replace(/[.,!?;:]/g, " ").split(/\s+/).filter(Boolean);
+  for (let i = 0; i < words.length; i++) {
+    const o = ORDINALS[words[i]] ?? ORDINALS[words[i].replace(/\.$/, "")];
+    if (o) return o === -1 ? (max > 0 ? max : null) : o <= max ? o : null;
+    if (/^\d+\.?$/.test(words[i])) {
+      const n = parseInt(words[i], 10);
+      return n >= 1 && n <= max ? n : null;
+    }
+    const r = readNumber(words, i, lang === "en" ? "en" : "de");
+    if (r && r.used && Number.isInteger(r.value)) return r.value >= 1 && r.value <= max ? r.value : null;
+  }
+  return null;
+}
+
 /* ---------------- Einheiten ---------------- */
 // Faktor zur Basiseinheit (Länge: Meter, Gewicht: Kilogramm, Volumen: Liter, Tempo: m/s, Fläche: m²); Temperatur extra
 const UNITS = [
@@ -275,4 +299,4 @@ function fmt(v, lang = "de") {
   return v.toLocaleString(lang === "en" ? "en-US" : "de-DE", { maximumFractionDigits: digits, useGrouping: false });
 }
 
-module.exports = { readNumber, deWord, toWords, slotValues, evaluate, convert, calc, fmt, UNITS };
+module.exports = { readNumber, deWord, toWords, slotValues, pick, evaluate, convert, calc, fmt, UNITS };

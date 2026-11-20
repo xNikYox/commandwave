@@ -15,7 +15,7 @@ const path = require("node:path");
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const VERSION = /^\d+(\.\d+){0,3}([-+][0-9A-Za-z.]+)?$/;
-const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "window", "amazonMusic", "typeText", "appVolume", "screenshot", "keys", "shell", "sequence", "none"];
+const ACTIONS = ["run", "open", "say", "media", "mediaSession", "browser", "window", "amazonMusic", "playInApp", "typeText", "appVolume", "volume", "screenshot", "keys", "shell", "sequence", "none"];
 const numbers = require("./numbers");
 
 /** mod.json prüfen → { mod } oder { error } */
@@ -189,6 +189,20 @@ function makeApi(mod, base, host, commands, slots, info) {
     sound: (name, on = true) => host.sound?.(String(name), !!on),
     /** Ordner/Datei im Explorer zeigen */
     reveal: (file) => host.reveal?.(file),
+    /** Tasten drücken (SendKeys-Schreibweise): api.keys("^+m") = Strg + Umschalt + M (ab 2.0) */
+    keys: (keys) => host.actions.keys({ keys }),
+    /** Einstellungen der Mod („settings“ in der mod.json, im Fenster unter Einstellungen änderbar) → { key: wert } (ab 2.0) */
+    settings: () => ({ ...Object.fromEntries((mod.settings || []).map((x) => [x.key, x.default ?? ""])), ...(host.modSettings?.(mod.id) || {}) }),
+    /** Liste im Fenster und im Overlay zeigen: api.showList("Deine Notizen", ["…", "…"]) (ab 2.0) */
+    showList: (title, items) => host.showList?.(String(title), (items || []).map(String)),
+    /** PowerShell-Skript ausführen → letzte JSON-Zeile der Ausgabe als Objekt (ab 2.0) */
+    powershell: (script) => host.actions.powershellJson({ script }),
+    /** Chromium-App (z. B. "Spotify*"): Adresse öffnen, dann den ersten Abspielen-Knopf drücken → { ok, clicked } (ab 2.0) */
+    playInApp: (like, uri) => host.actions.playInApp({ like, uri }),
+    /** Gesamtlautstärke setzen: api.volume(0.3) (ab 2.0) */
+    volume: (value) => host.actions.volume({ value }),
+    /** Routinen (ab 2.0): list() → [{ id, name, phrases }], run(id) → { ok, failed } */
+    routines: host.routines || null,
     notify: (title, body) => host.notify?.(title, body),
     log: (...a) => host.log?.(`[${mod.id}]`, ...a),
     /** kleiner Speicher je Mod (JSON) */
