@@ -1,0 +1,9 @@
+{
+  "id": "dateien",
+  "name": "Dateien suchen",
+  "version": "1.0.0",
+  "minApp": "2.0.0",
+  "author": "CommandWave",
+  "description": "„Öffne die Datei Bewerbung“, „Suche die Datei Rechnung Telekom“ – sucht in Dokumente, Desktop, Downloads, Bilder und Musik (auch mit OneDrive) über den Windows-Suchindex. Ein klarer Treffer wird gleich geöffnet, sonst zeigt CommandWave die fünf besten – „Nummer zwei“ sagen oder anklicken. Ordner öffnen: „Zeig mir meine Downloads“. English: „Open the file invoice“.",
+  "main": "main.js"
+}
