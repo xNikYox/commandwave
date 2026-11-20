@@ -1,0 +1,9 @@
+{
+  "id": "routinen",
+  "name": "Routinen",
+  "version": "1.0.0",
+  "minApp": "2.0.0",
+  "author": "CommandWave",
+  "description": "Mehrere Schritte auf ein Wort: „Arbeitsmodus“, „Starte Routine Gaming Modus“, „Welche Routinen gibt es?“. Routinen legst du im Fenster unter Routinen an – auch zu einer Uhrzeit (z. B. Mo–Fr 8:00) oder beim Start von CommandWave. English: „Start routine …“, „What routines are there?“.",
+  "main": "main.js"
+}
