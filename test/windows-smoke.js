@@ -60,11 +60,13 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
   assert.equal(r.ok, true);
   console.log("Lautstärke-Tasten (PowerShell keybd_event): ok");
 
+  // Ordner über Windows-Namen (shell:Downloads) – so stimmt es auch, wenn OneDrive die Ordner verschoben hat
   r = await a.handle("öffne downloads");
   assert.equal(r.say, "Downloads wird geöffnet");
-  assert.match(opened.at(-1), /\\Downloads$/);
-  assert.ok(!opened.at(-1).includes("%"), "Umgebungsvariable nicht ersetzt: " + opened.at(-1));
-  console.log("„Öffne Downloads“ →", opened.at(-1));
+  assert.equal(r.ok, true, "Ordner öffnen: " + r.error);
+  r = await a.handle("zeig mir meine bilder");
+  assert.equal(r.ok, true, "Bilder öffnen: " + r.error);
+  console.log("„Öffne Downloads“, „Zeig mir meine Bilder“ (shell:Downloads, shell:My Pictures): ok");
 
   assert.match((await a.handle("wie spät ist es")).say, /Uhr/);
 
@@ -220,10 +222,65 @@ const running = (exe) => execFileSync("tasklist", ["/FI", `IMAGENAME eq ${exe}`,
     console.log("Amazon-Music-Steuerung an Chromium-App: ok");
   }
 
+  // 2.0: Abspielen in einer Chromium-App (wie Spotify) – Edge im App-Modus, Knopf im Inhalt, nicht in Seitenleiste/Leiste unten
+  if (edgeExe) {
+    const page = "<title>CW-Spieltest</title><body style='margin:0'><nav style='position:fixed;left:0;top:0;width:15%;height:100%'><button>Play Seitenleiste</button></nav>" +
+      "<main style='margin-left:30%;padding-top:80px'><h2>Top-Ergebnis</h2><button onclick=\"document.title='CW-Spieltest gespielt'\">Play Testlied</button></main>" +
+      "<footer style='position:fixed;bottom:0;left:0;right:0'><button>Play Leiste</button></footer></body>";
+    const prof = require("node:fs").mkdtempSync(path.join(os.tmpdir(), "cw-edge3-"));
+    require("node:child_process").spawn(edgeExe, ["--no-first-run", "--no-default-browser-check", "--user-data-dir=" + prof, "--window-size=1000,700", "--app=data:text/html," + encodeURIComponent(page)], { detached: true, stdio: "ignore" }).unref();
+    await wait(6000);
+    const res = await actions.playInApp({ like: "CW-Spieltest*" });
+    console.log("Abspielen in Chromium-App (wie Spotify):", JSON.stringify(res));
+    await wait(1500);
+    const title = execFileSync("powershell.exe", ["-NoProfile", "-Command", "(Get-Process msedge | Where-Object { $_.MainWindowTitle -like 'CW-Spieltest*' } | Select-Object -First 1).MainWindowTitle"]).toString().trim();
+    try {
+      execFileSync("taskkill", ["/IM", "msedge.exe", "/F"], { stdio: "ignore" });
+    } catch {
+      // schon zu
+    }
+    assert.equal(res.ok, true, "Abspielen-Knopf nicht gefunden: " + JSON.stringify(res));
+    assert.equal(res.clicked, "Play Testlied");
+    assert.equal(title, "CW-Spieltest gespielt");
+    console.log("Abspielen in Chromium-App: ok");
+  }
+
+  // 2.0: Gesamtlautstärke (Core Audio) – auf dem Testrechner gibt es evtl. kein Audiogerät
+  const mv = await actions.volume({ value: 0.3 });
+  console.log("Gesamtlautstärke:", JSON.stringify(mv));
+  assert.ok(mv.ok || mv.error === "kein Audiogerät", "Lautstärke: " + mv.error);
+  // 2.0: Routine mit echten Aktionen durch den Assistenten – ein unbekannter Befehl hält die anderen nicht auf
+  const R = require("../src/core/routines");
+  const routine = R.normalize({ name: "Test", steps: [{ type: "command", text: "wie spät ist es" }, { type: "command", text: "erzähl mir einen witz" }, { type: "volume", value: 30 }, { type: "wait", seconds: 1 }, { type: "website", url: "example.com" }] });
+  const rr = await R.runSteps(routine, {
+    command: async (t) => {
+      const x = await a.handle(t);
+      if (!x.ok) throw new Error(x.say);
+    },
+    volume: async (v) => {
+      const x = await actions.volume({ value: v / 100 });
+      if (x.ok === false && x.error !== "kein Audiogerät") throw new Error(x.error);
+    },
+    wait: (sec) => wait(sec * 1000),
+    website: (url) => actions.open({ target: url }),
+  });
+  console.log("Routine:", JSON.stringify(rr), "→", R.summary(routine.name, rr));
+  assert.deepEqual(rr.failed.map((f) => f.index), [1]);
+  assert.equal(opened.at(-1), "https://example.com");
+  // 2.0: Notizen durch den Assistenten (Datenordner)
+  const notesDir = require("node:fs").mkdtempSync(path.join(os.tmpdir(), "cw-notiz-"));
+  const an = new Assistant({ modsDir: path.join(__dirname, "..", "mods"), actions, dataDir: notesDir, appVersion: require("../package.json").version });
+  an.reload();
+  assert.deepEqual(an.errors, []);
+  assert.equal((await an.handle("merke dir milch kaufen")).say, "Ich habe mir gemerkt: Milch kaufen");
+  assert.match((await an.handle("was habe ich mir gemerkt")).say, /Nummer 1: Milch kaufen/);
+  console.log("Routine und Notizen: ok");
+
   // Alle PowerShell-Skripte müssen sich fehlerfrei einlesen lassen (auch Teile, die hier nicht laufen)
   const ws = require("../src/core/winscripts");
   const scripts = { media: ws.mediaSessionScript("info", "amazon"), browser: ws.browserScript("closeMatching", "youtube"), window: ws.windowScript("focus", "notepad"), amazon: ws.amazonMusicScript("blinding lights (live)"),
-    type: ws.typeTextScript("hallo (welt)", 1), volume: ws.appVolumeScript("spotify", "down", 0.2), system: ws.systemScript(), screenshot: ws.screenshotScript("C:\\x.png", "window", 1) };
+    type: ws.typeTextScript("hallo (welt)", 1), volume: ws.appVolumeScript("spotify", "down", 0.2), system: ws.systemScript(), screenshot: ws.screenshotScript("C:\\x.png", "window", 1),
+    playInApp: ws.playInAppScript("Spotify*", "spotify:search:coldplay"), master: ws.volumeScript(0.3) };
   for (const [name, sc] of Object.entries(scripts)) {
     const f = path.join(os.tmpdir(), `cw-${name}.ps1`);
     require("node:fs").writeFileSync(f, "\ufeff" + sc);

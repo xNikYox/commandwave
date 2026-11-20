@@ -1,59 +1,59 @@
 {
   "id": "system",
   "name": "Windows & Ordner",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minApp": "1.3.0",
   "author": "CommandWave",
-  "description": "Ordner öffnen („Öffne Downloads“), Windows-Einstellungen („Öffne die Bluetooth Einstellungen“), PC sperren.",
+  "description": "Ordner öffnen („Öffne Downloads“, „Zeig mir meine Bilder“ – auch wenn OneDrive die Ordner verschoben hat), Windows-Einstellungen („Öffne die Bluetooth Einstellungen“), PC sperren.",
   "slots": {
     "ordner": {
       "downloads": {
-        "target": "%USERPROFILE%\\Downloads",
+        "target": "shell:Downloads",
         "label": "Downloads",
         "label_en": "Downloads"
       },
       "dokumente": {
-        "target": "%USERPROFILE%\\Documents",
+        "target": "shell:Personal",
         "label": "Dokumente",
         "label_en": "Dokumente",
         "lang": "de"
       },
       "bilder": {
-        "target": "%USERPROFILE%\\Pictures",
+        "target": "shell:My Pictures",
         "label": "Bilder",
         "label_en": "Bilder",
         "lang": "de"
       },
       "musik": {
-        "target": "%USERPROFILE%\\Music",
+        "target": "shell:My Music",
         "label": "Musik",
         "label_en": "Musik",
         "lang": "de"
       },
       "videos": {
-        "target": "%USERPROFILE%\\Videos",
+        "target": "shell:My Video",
         "label": "Videos",
         "label_en": "Videos"
       },
       "desktop": {
-        "target": "%USERPROFILE%\\Desktop",
+        "target": "shell:Desktop",
         "label": "Desktop",
         "label_en": "Desktop"
       },
       "documents": {
-        "target": "%USERPROFILE%\\Documents",
+        "target": "shell:Personal",
         "label": "Documents",
         "label_en": "Documents",
         "lang": "en"
       },
       "pictures": {
-        "target": "%USERPROFILE%\\Pictures",
+        "target": "shell:My Pictures",
         "label": "Pictures",
         "label_en": "Pictures",
         "lang": "en"
       },
       "music": {
-        "target": "%USERPROFILE%\\Music",
+        "target": "shell:My Music",
         "label": "Music",
         "label_en": "Music",
         "lang": "en"

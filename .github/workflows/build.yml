@@ -29,6 +29,12 @@ jobs:
         run: node test/selfupdate-live.js
       - name: Windows-Praxistest (Aktionen)
         run: node test/windows-smoke.js
+      - name: Dateien suchen (Suchindex, Ersatzweg über die Ordner)
+        run: node test/windows-dateien.js
+      - name: Discord-Tasten, OBS (Test-Server), Spotify
+        run: node test/windows-mods20.js
+      - name: Natürliche Stimme (Piper laden, Satz sprechen)
+        run: node test/piper-smoke.js
       - name: App-Test (Electron, Sprachmodell, Erkenner)
         run: node test/electron-smoke.js
       - name: Installer bauen
