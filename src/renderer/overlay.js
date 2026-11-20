@@ -38,9 +38,35 @@ ov.onUpdate((d) => {
   if (d.text != null) $("#status").textContent = d.text;
   if (d.heard != null) $("#heard").textContent = d.heard;
   if (d.level != null) level = d.level;
+  if (d.list !== undefined) showList(d.list);
   if (!running) {
     running = true;
     requestAnimationFrame(frame);
   }
   if (d.echo) ov.shown($("#status").textContent);
 });
+
+/** Liste unter der Anzeige (Notizen, Dateien zur Auswahl – „Nummer zwei“ sagen) */
+function showList(l) {
+  const el = $("#list");
+  el.hidden = !l;
+  if (!l) return (el.textContent = "");
+  el.textContent = "";
+  const h = document.createElement("div");
+  h.className = "ltitle";
+  h.textContent = l.title || "";
+  el.append(h);
+  const ol = document.createElement("ol");
+  for (const t of l.items) {
+    const li = document.createElement("li");
+    li.textContent = t.replace(/^\d+\.\s*/, "");
+    ol.append(li);
+  }
+  el.append(ol);
+  if (l.more) {
+    const m = document.createElement("div");
+    m.className = "more";
+    m.textContent = `… und ${l.more} weitere im Fenster`;
+    el.append(m);
+  }
+}

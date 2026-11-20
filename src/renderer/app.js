@@ -59,7 +59,7 @@ async function listen() {
   if (speech.listening) return speech.stop();
   if (busy) return;
   busy = true;
-  speechSynthesis.cancel();
+  speech.cancel();
   speech.stopWake(); // Aktivierungswort pausiert, solange CommandWave zuhört und antwortet
   $("#heard").hidden = true;
   $("#answer").hidden = true;
@@ -238,14 +238,24 @@ async function answer(r, heardText) {
     await say(r.say, r.lang);
   } else if (r.ok) bubble("#answer", "✓");
   if (r.confirm) return answer(await confirmFlow(r)); // Ergebnis der Rückfrage hat nie wieder eine Rückfrage
+  if (r.mod === "notizen") renderNotes();
   idle();
 }
 
-/** Vorlesen mit der Stimme der passenden Sprache */
+/** Vorlesen mit der Stimme der passenden Sprache (Deutsch: Windows-Stimme oder Piper, je nach Einstellung) */
 function say(text, lang) {
   const s = state.settings;
   const l = lang || guessLang(text);
-  return speech.speak(text, { voice: l === "en" ? s.voiceEn : s.voice, rate: Number(s.rate) || 1, volume: Number(s.volume), lang: l });
+  return speech.speak(text, { voice: l === "en" ? s.voiceEn : s.voice, rate: Number(s.rate) || 1, volume: Number(s.volume), lang: l,
+    backend: s.tts || "windows", synth: (t) => cw.ttsSynth(t), onFallback: ttsFallback });
+}
+/** Piper klappt nicht: Windows-Stimme spricht, einmal Bescheid sagen */
+let ttsWarned = false;
+function ttsFallback(e) {
+  console.warn("Piper:", e.message);
+  if (ttsWarned) return;
+  ttsWarned = true;
+  $("#hint").textContent = "Die Piper-Stimme klappt gerade nicht – ich nehme die Windows-Stimme. (" + e.message + ")";
 }
 /** Sprache eines Textes grob erkennen (für Meldungen ohne Sprachangabe, z. B. abgelaufene Timer) */
 const guessLang = (t) => (/[äöüß]|\b(der|die|das|ist|und|nicht|ich|wird)\b/i.test(t) ? "de" : /\b(the|is|your|you|it|and|not)\b/i.test(t) ? "en" : primaryLang());
@@ -259,6 +269,29 @@ function bubble(sel, text, cls = "") {
 
 $("#mic").addEventListener("click", listen);
 cw.onListen(listen);
+// Routinen: vorlesen, wenn die laufende Ausgabe fertig ist – und Bescheid geben, wenn dieser Satz fertig ist
+cw.onSpeakWait(async ({ id, text, lang }) => {
+  try {
+    await speech.speaking;
+    bubble("#answer", text);
+    await say(text, lang || guessLang(text));
+  } finally {
+    cw.speakDone(id);
+  }
+});
+
+/* ---------------- Liste (Notizen, Dateien zur Auswahl): Nummer sagen oder anklicken ---------------- */
+cw.onList(({ title, items, choose }) => {
+  const card = $("#listCard");
+  card.hidden = !items.length;
+  card.classList.toggle("pick", !!choose);
+  $("#listTitle").textContent = title;
+  $("#listItems").innerHTML = items.map((t, i) => `<li data-pick="${i + 1}">${esc(t.replace(/^\d+\.\s*/, ""))}</li>`).join("");
+  if (choose) for (const li of $$("[data-pick]", card)) li.onclick = () => {
+    speech.stop(); // Zuhören beenden – der Klick ist die Antwort
+    cw.listPick(Number(li.dataset.pick));
+  };
+});
 cw.onSpeak(async (text) => {
   bubble("#answer", text);
   await say(text, guessLang(text));
@@ -332,6 +365,8 @@ document.addEventListener("visibilitychange", () => wave.kick());
 $$(".tab").forEach((b) => b.addEventListener("click", () => {
   $$(".tab").forEach((x) => x.classList.toggle("on", x === b));
   $$(".page").forEach((p) => p.classList.toggle("on", p.id === "page-" + b.dataset.tab));
+  if (b.dataset.tab === "routinen") renderRoutines();
+  if (b.dataset.tab === "notizen") renderNotes();
 }));
 
 /* ---------------- Befehle ---------------- */
@@ -418,6 +453,7 @@ function apply(mods) {
   if (ready) ensureModels().then(idle).catch((e) => setStatus("Fehler: " + e.message, "error"));
   renderCommands();
   renderMods();
+  renderModSettings();
   if (ready) renderLearn();
 }
 cw.onMods(apply);
@@ -446,9 +482,12 @@ async function renderSettings() {
   $("#voiceEn").innerHTML = `<option value="">Automatisch (erste englische Stimme)</option>` + opts(en, s.voiceEn);
   $("#voiceHint").textContent = de.length ? `${de.length} deutsche, ${en.length} englische Stimme${en.length === 1 ? "" : "n"}` : "Keine deutsche Stimme – Windows: Einstellungen → Zeit und Sprache → Sprache → Deutsch → Sprachausgabe installieren";
   $("#language").value = s.language || "de";
+  $("#ttsEngine").value = s.tts || "windows";
+  $("#voiceRow").hidden = (s.tts || "windows") !== "windows";
   $("#wakeWord").value = s.wakeWord || "hey wave";
   renderLearn();
   renderSources();
+  renderModSettings();
 }
 
 for (const el of $$("[data-set]")) el.addEventListener("change", async () => {
@@ -663,6 +702,217 @@ $("#addSource").addEventListener("submit", async (e) => {
   state.settings = (await cw.saveSettings({ sources: [...state.settings.sources, src] })).settings;
   $("#srcValue").value = "";
   renderSources();
+});
+
+/* ---------------- Natürliche Stimme (Piper): einmal laden mit Bestätigung, dann offline ---------------- */
+$("#ttsEngine").onchange = async (e) => {
+  const id = e.target.value;
+  const t = $("#ttsText");
+  const back = () => (e.target.value = state.settings.tts || "windows");
+  if (id !== "windows") {
+    const st = (await cw.ttsStatus())[id];
+    if (!st.installed) {
+      const mb = Math.max(1, Math.round(st.bytes / 1e6));
+      if (!confirm(`Für „${st.label}“ lädt CommandWave einmalig ${mb} MB aus dem Internet (Piper von GitHub, die Stimme von Hugging Face).\n\nDanach spricht die Stimme komplett offline auf diesem PC. Jetzt laden?`)) return back();
+      $("#ttsRow").hidden = false;
+      $("#ttsMeter").hidden = false;
+      e.target.disabled = true;
+      t.textContent = "Lade …";
+      const r = await cw.ttsInstall(id);
+      e.target.disabled = false;
+      $("#ttsMeter").hidden = true;
+      if (!r.ok) {
+        t.textContent = `Das Laden hat nicht geklappt: ${r.error} – es bleibt bei der Windows-Stimme.`;
+        return back();
+      }
+    }
+  }
+  state.settings = (await cw.saveSettings({ tts: id })).settings;
+  $("#voiceRow").hidden = id !== "windows";
+  ttsWarned = false;
+  $("#ttsRow").hidden = id === "windows";
+  t.textContent = id === "windows" ? "" : "Fertig – die Stimme läuft jetzt offline.";
+  await say("Hallo, so klinge ich jetzt. Editor wird gestartet.", "de");
+};
+cw.onTtsProgress((p) => {
+  $("#ttsLevel").style.width = p.percent + "%";
+  $("#ttsText").textContent = p.label === "fertig" ? "Richte die Stimme ein …" : `Lade ${p.label} … ${p.percent} % (${Math.round(p.done / 1e6)} von ${Math.round(p.total / 1e6)} MB)`;
+});
+
+/* ---------------- Einstellungen für Mods („settings“ in der mod.json, z. B. Discord-Tasten, OBS-Passwort) ---------------- */
+/** SendKeys-Schreibweise lesbar machen: "^+m" → „Strg + Umschalt + M“ */
+function keysLabel(k) {
+  if (!k) return "keine";
+  const m = /^([\^+%]*)(.*)$/.exec(k);
+  const mods = [...m[1]].map((c) => ({ "^": "Strg", "+": "Umschalt", "%": "Alt" })[c]);
+  return [...mods, m[2].replace(/^\{(.+)\}$/, "$1").toUpperCase()].join(" + ");
+}
+/** Tastendruck → SendKeys-Schreibweise ("^+m"); nur Strg/Alt/Umschalt gedrückt → null */
+function keysFromEvent(e) {
+  if (["Control", "Shift", "Alt", "Meta", "AltGraph"].includes(e.key)) return null;
+  const named = { Enter: "{ENTER}", Tab: "{TAB}", " ": " ", Escape: "{ESC}", Backspace: "{BS}", Delete: "{DEL}", Insert: "{INS}", Home: "{HOME}", End: "{END}", PageUp: "{PGUP}", PageDown: "{PGDN}",
+    ArrowUp: "{UP}", ArrowDown: "{DOWN}", ArrowLeft: "{LEFT}", ArrowRight: "{RIGHT}" };
+  let key = named[e.key] || (/^F\d{1,2}$/.test(e.key) ? `{${e.key}}` : /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : /^Digit\d$/.test(e.code) ? e.code.slice(5) : e.key.length === 1 ? e.key.toLowerCase() : null);
+  if (!key) return null;
+  if ("+^%~(){}[]".includes(key)) key = `{${key}}`;
+  return (e.ctrlKey ? "^" : "") + (e.altKey ? "%" : "") + (e.shiftKey ? "+" : "") + key;
+}
+function renderModSettings() {
+  if (!state) return;
+  const mods = state.mods.filter((m) => m.enabled && m.settings?.length);
+  $("#modSettingsCard").hidden = !mods.length;
+  const vals = state.settings.modSettings || {};
+  $("#modSettings").innerHTML = mods.map((m) => `<div class="modset"><h4>${esc(m.name)}</h4>${m.settings.map((x) => {
+    const v = vals[m.id]?.[x.key] ?? x.default ?? "";
+    const attrs = `data-mod="${esc(m.id)}" data-key="${esc(x.key)}"`;
+    const input = x.type === "hotkey" ? `<input class="key" readonly ${attrs} data-hotkey value="${esc(keysLabel(v))}">`
+      : `<input ${x.type === "password" ? 'type="password"' : ""} ${attrs} value="${esc(v)}" placeholder="${esc(x.default || "")}" autocomplete="off">`;
+    return `<label class="row"><span>${esc(x.label)}${x.help ? `<small class="sub">${esc(x.help)}</small>` : ""}</span>${input}</label>`;
+  }).join("")}</div>`).join("");
+  const save = async (el, v) => (state.settings = (await cw.saveModSettings(el.dataset.mod, { [el.dataset.key]: v })).settings);
+  for (const el of $$("#modSettings input:not([data-hotkey])")) el.onchange = () => save(el, el.value.trim());
+  for (const el of $$("#modSettings [data-hotkey]")) {
+    el.onfocus = () => (el.value = "Tasten drücken …");
+    el.onblur = () => renderModSettings();
+    el.onkeydown = async (e) => {
+      e.preventDefault();
+      if (e.key === "Escape") return el.blur();
+      const k = (e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.altKey ? "" : keysFromEvent(e);
+      if (k == null) return;
+      await save(el, k);
+      el.blur();
+    };
+  }
+}
+
+/* ---------------- Routinen ---------------- */
+const STEP_NAMES = { command: "Befehl (wie gesprochen)", app: "App starten", website: "Webseite öffnen", volume: "Lautstärke setzen", wait: "Warten", say: "Etwas sagen" };
+const DAYS = [[1, "Mo"], [2, "Di"], [3, "Mi"], [4, "Do"], [5, "Fr"], [6, "Sa"], [0, "So"]];
+let routinesState = { list: [], running: [] };
+let editing = null; // Routine im Editor (Kopie)
+
+async function renderRoutines() {
+  routinesState = await cw.routines();
+  const list = routinesState.list;
+  const needAuto = list.some((r) => r.enabled && r.onStart) && !routinesState.autostart;
+  $("#routineAuto").hidden = !needAuto;
+  $("#routineAuto").innerHTML = needAuto ? `„Beim Start“ läuft, sobald CommandWave startet. Damit das nach dem Anmelden passiert: <button class="btn mini" id="autoOn">Mit Windows starten</button>` : "";
+  if (needAuto) $("#autoOn").onclick = async () => ((state.settings = (await cw.saveSettings({ autostart: true })).settings), renderSettings(), renderRoutines());
+  $("#routines").innerHTML = list.length ? list.map((r) => `<div class="routine${r.enabled ? "" : " off"}">
+      <div class="head"><b>${esc(r.name)}</b><span class="row-btns"><button class="btn mini" data-rrun="${esc(r.id)}">Starten</button><button class="btn mini" data-redit="${esc(r.id)}">Bearbeiten</button></span></div>
+      <small>${esc(r.triggerLabel)}${r.next ? ` · nächster Lauf ${new Date(r.next).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}` : ""}</small>
+      <small>${r.stepLabels.length ? r.stepLabels.map((x, i) => `${i + 1}. ${esc(x)}`).join(" · ") : "Noch keine Schritte"}</small>
+      ${routinesState.running.includes(r.id) ? '<small class="running">läuft gerade …</small>' : ""}</div>`).join("")
+    : `<p class="muted center small">Noch keine Routinen. Beispiel: „Arbeitsmodus“ → Editor und Outlook öffnen, Lautstärke 30 %, „Viel Erfolg!“ sagen.</p>`;
+  for (const b of $$("[data-rrun]")) b.onclick = () => cw.runRoutine(b.dataset.rrun).then(() => setTimeout(renderRoutines, 300));
+  for (const b of $$("[data-redit]")) b.onclick = () => editRoutine(list.find((r) => r.id === b.dataset.redit));
+}
+cw.onRoutine(() => $("#page-routinen").classList.contains("on") && renderRoutines());
+
+function editRoutine(r) {
+  editing = JSON.parse(JSON.stringify(r || { name: "", phrases: [], times: [], onStart: false, enabled: true, steps: [{ type: "command", text: "" }] }));
+  $("#routineEdit").hidden = false;
+  $("#rTitle").textContent = r ? "Routine bearbeiten" : "Neue Routine";
+  $("#rDelete").hidden = !r;
+  $("#rName").value = editing.name;
+  $("#rPhrases").value = editing.phrases.join(", ");
+  $("#rOnStart").checked = editing.onStart;
+  $("#rEnabled").checked = editing.enabled;
+  $("#rPhraseWarn").hidden = true;
+  // Apps für „App starten“ zum Auswählen
+  $("#appNames").innerHTML = [...new Set(state.slots?.app || [])].slice(0, 300).map((a) => `<option value="${esc(a)}">`).join("");
+  renderTimes();
+  renderSteps();
+  $("#routineEdit").scrollIntoView({ behavior: "smooth" });
+  $("#rName").focus();
+}
+function renderTimes() {
+  $("#rTimes").innerHTML = editing.times.map((t, i) => `<div class="trow"><input type="time" data-time="${i}" value="${esc(t.time)}">
+    <span class="days">${DAYS.map(([d, n]) => `<label><input type="checkbox" data-day="${i}" value="${d}"${t.days.includes(d) ? " checked" : ""}>${n}</label>`).join("")}</span>
+    <button class="btn mini" data-tdel="${i}" type="button">✕</button></div>`).join("");
+  for (const el of $$("[data-time]")) el.onchange = () => (editing.times[el.dataset.time].time = el.value);
+  for (const el of $$("[data-day]")) el.onchange = () => {
+    const t = editing.times[el.dataset.day];
+    const d = Number(el.value);
+    t.days = el.checked ? [...new Set([...t.days, d])] : t.days.filter((x) => x !== d);
+  };
+  for (const b of $$("[data-tdel]")) b.onclick = () => (editing.times.splice(Number(b.dataset.tdel), 1), renderTimes());
+}
+function stepInput(s, i) {
+  const a = `data-sval="${i}"`;
+  switch (s.type) {
+    case "command": return `<input ${a} value="${esc(s.text || "")}" placeholder="z. B. öffne die app editor">`;
+    case "say": return `<input ${a} value="${esc(s.text || "")}" placeholder="z. B. Viel Erfolg heute!">`;
+    case "app": return `<input ${a} value="${esc(s.target || "")}" list="appNames" placeholder="z. B. Spotify">`;
+    case "website": return `<input ${a} value="${esc(s.url || "")}" placeholder="z. B. youtube.com">`;
+    case "volume": return `<input ${a} type="number" min="0" max="100" value="${esc(s.value ?? 30)}"> %`;
+    case "wait": return `<input ${a} type="number" min="1" max="3600" value="${esc(s.seconds ?? 5)}"> Sekunden`;
+  }
+  return "";
+}
+function renderSteps() {
+  $("#rSteps").innerHTML = editing.steps.map((s, i) => `<div class="srow"><span class="muted">${i + 1}.</span>
+    <select data-stype="${i}">${Object.entries(STEP_NAMES).map(([k, n]) => `<option value="${k}"${k === s.type ? " selected" : ""}>${n}</option>`).join("")}</select>
+    ${stepInput(s, i)}
+    <button class="btn mini" data-sup="${i}" type="button" title="nach oben">↑</button><button class="btn mini" data-sdel="${i}" type="button" title="entfernen">✕</button></div>`).join("");
+  const field = { command: "text", say: "text", app: "target", website: "url", volume: "value", wait: "seconds" };
+  for (const el of $$("[data-stype]")) el.onchange = () => ((editing.steps[el.dataset.stype] = { type: el.value }), renderSteps());
+  for (const el of $$("[data-sval]")) el.oninput = () => {
+    const s = editing.steps[el.dataset.sval];
+    s[field[s.type]] = el.type === "number" ? Number(el.value) : el.value;
+  };
+  for (const b of $$("[data-sup]")) b.onclick = () => {
+    const i = Number(b.dataset.sup);
+    if (i > 0) [editing.steps[i - 1], editing.steps[i]] = [editing.steps[i], editing.steps[i - 1]];
+    renderSteps();
+  };
+  for (const b of $$("[data-sdel]")) b.onclick = () => (editing.steps.splice(Number(b.dataset.sdel), 1), renderSteps());
+}
+/** Kennt die Erkennung die Wörter? Sonst Hinweis: so schreiben, wie es klingt */
+async function checkPhrases() {
+  const phrases = $("#rPhrases").value.split(",").map((x) => x.trim()).filter(Boolean);
+  const r = phrases.length ? await cw.checkPhrases(phrases) : { unknown: [] };
+  $("#rPhraseWarn").hidden = !r.unknown.length;
+  $("#rPhraseWarn").textContent = r.unknown.length ? `Diese Wörter kennt die Spracherkennung nicht: ${r.unknown.join(", ")}. Schreib sie so, wie sie klingen (z. B. „disk kord“ statt „discord“) – sonst klappt nur „Starte Routine …“.` : "";
+}
+$("#rPhrases").onchange = checkPhrases;
+$("#newRoutine").onclick = () => editRoutine(null);
+$("#rAddTime").onclick = () => (editing.times.push({ time: "08:00", days: [1, 2, 3, 4, 5] }), renderTimes());
+$("#rAddStep").onclick = () => (editing.steps.push({ type: "command", text: "" }), renderSteps());
+$("#rCancel").onclick = () => (($("#routineEdit").hidden = true), (editing = null));
+$("#rDelete").onclick = async () => {
+  if (!editing?.id || !confirm(`Routine „${editing.name}“ löschen?`)) return;
+  await cw.deleteRoutine(editing.id);
+  $("#routineEdit").hidden = true;
+  renderRoutines();
+};
+$("#rSave").onclick = async () => {
+  editing.name = $("#rName").value.trim();
+  editing.phrases = $("#rPhrases").value.split(",").map((x) => x.trim()).filter(Boolean);
+  editing.onStart = $("#rOnStart").checked;
+  editing.enabled = $("#rEnabled").checked;
+  const r = await cw.saveRoutine(editing);
+  if (!r.ok) return alert(r.error);
+  await checkPhrases();
+  if ($("#rPhraseWarn").hidden) $("#routineEdit").hidden = true;
+  editing = { ...editing, id: r.routine.id };
+  renderRoutines();
+};
+
+/* ---------------- Notizen ---------------- */
+async function renderNotes() {
+  const notes = await cw.notes();
+  $("#notes").innerHTML = notes.length ? notes.map((n, i) => `<div class="notec"><div><span class="n">${i + 1}.</span>${esc(n.text)}<small>${new Date(n.at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}</small></div>
+    <button class="btn mini" data-ndel="${esc(n.id)}">Löschen</button></div>`).join("") : `<p class="muted center small">Noch keine Notizen.</p>`;
+  for (const b of $$("[data-ndel]")) b.onclick = async () => (await cw.deleteNote(b.dataset.ndel), renderNotes());
+}
+$("#noteAdd").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const t = $("#noteInput").value.trim();
+  if (!t) return;
+  $("#noteInput").value = "";
+  await cw.addNote(t);
+  renderNotes();
 });
 
 /* ---------------- App-Updates ---------------- */

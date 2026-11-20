@@ -27,6 +27,7 @@
       <canvas class="wave" id="wave" width="360" height="44" aria-hidden="true"></canvas>
       <div class="bubble you" id="heard" hidden></div>
       <div class="bubble cw" id="answer" hidden></div>
+      <div class="listcard" id="listCard" hidden><b id="listTitle"></b><ol id="listItems"></ol></div>
       <form class="typed" id="typed">
         <input id="typedInput" placeholder="… oder Befehl eintippen" autocomplete="off">
       </form>
@@ -34,6 +35,8 @@
 
     <nav class="tabs">
       <button class="tab on" data-tab="befehle">Befehle</button>
+      <button class="tab" data-tab="routinen">Routinen</button>
+      <button class="tab" data-tab="notizen">Notizen</button>
       <button class="tab" data-tab="mods">Mods</button>
       <button class="tab" data-tab="einstellungen">Einstellungen</button>
     </nav>
@@ -41,6 +44,33 @@
     <section class="page on" id="page-befehle">
       <input class="search" id="search" placeholder="Befehle durchsuchen …">
       <div id="commands"></div>
+    </section>
+
+    <section class="page" id="page-routinen">
+      <p class="muted small">Mehrere Schritte auf einmal – auf ein Wort („Arbeitsmodus“), zu einer Uhrzeit oder beim Start. Jeder Befehl, den CommandWave kennt, geht als Schritt.</p>
+      <div class="row-btns"><button class="btn primary" id="newRoutine">Neue Routine</button></div>
+      <div class="note" id="routineAuto" hidden></div>
+      <div id="routines"></div>
+      <div class="card" id="routineEdit" hidden>
+        <h3 id="rTitle">Neue Routine</h3>
+        <label class="row"><span>Name</span><input id="rName" maxlength="60" placeholder="z. B. Arbeitsmodus" autocomplete="off"></label>
+        <label class="row"><span>Sätze<small class="sub">Was du sagst, um sie zu starten – mehrere mit Komma. Leer = nur „Starte Routine …“</small></span><input id="rPhrases" placeholder="z. B. arbeitsmodus" autocomplete="off"></label>
+        <p class="small err" id="rPhraseWarn" hidden></p>
+        <div class="row"><span>Uhrzeiten<small class="sub">Startet von selbst an diesen Tagen (der PC muss an sein)</small></span><button class="btn" id="rAddTime" type="button">Uhrzeit hinzufügen</button></div>
+        <div id="rTimes"></div>
+        <label class="row"><span>Beim Start<small class="sub">Einmal, wenn CommandWave startet – mit „Mit Windows starten“ also nach dem Anmelden</small></span><input type="checkbox" class="switch" id="rOnStart"></label>
+        <label class="row"><span>Aktiv</span><input type="checkbox" class="switch" id="rEnabled" checked></label>
+        <div class="row"><span>Schritte<small class="sub">Laufen nacheinander. Klappt einer nicht, geht es trotzdem weiter.</small></span><button class="btn" id="rAddStep" type="button">Schritt hinzufügen</button></div>
+        <div id="rSteps"></div>
+        <datalist id="appNames"></datalist>
+        <div class="row-btns rbtns"><button class="btn primary" id="rSave" type="button">Speichern</button><button class="btn" id="rCancel" type="button">Abbrechen</button><button class="btn" id="rDelete" type="button">Löschen</button></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-notizen">
+      <p class="muted small">„Merke dir …“, „Was habe ich mir gemerkt?“, „Lösche Notiz Nummer zwei“ – oder hier eintippen.</p>
+      <form class="typed" id="noteAdd"><input id="noteInput" placeholder="Neue Notiz …" maxlength="500" autocomplete="off"></form>
+      <div id="notes"></div>
     </section>
 
     <section class="page" id="page-mods">
@@ -90,11 +120,18 @@
         <h3>Sprache &amp; Stimme</h3>
         <label class="row"><span>Sprache<small class="sub">Bei „beide“ hören zwei Erkenner zu – CommandWave antwortet in der Sprache, in der du sprichst (braucht ~150 MB mehr Speicher)</small></span><select id="language"><option value="de">Deutsch</option><option value="en">English</option><option value="both">Deutsch + English</option></select></label>
         <label class="row"><span>Genaue Erkennung (Whisper)<small class="sub">Versteht beliebige Wörter und Namen („Spiel Lieder von SDP“). Springt nur ein, wenn ein Satz nicht sicher verstanden wurde – dann ~1 s länger. Braucht ~300 MB Arbeitsspeicher</small></span><input type="checkbox" class="switch" data-set="whisper"></label>
-        <label class="row"><span>Stimme (Deutsch)</span><select id="voice"></select></label>
+        <label class="row"><span>Sprachausgabe (Deutsch)<small class="sub">Piper klingt natürlicher – wird einmal geladen (~85 MB), danach offline</small></span><select id="ttsEngine"><option value="windows">Windows-Stimme</option><option value="piper-kerstin">Piper – Frau (Kerstin)</option><option value="piper-thorsten">Piper – Mann (Thorsten)</option></select></label>
+        <div class="row" id="ttsRow" hidden><span class="muted small" id="ttsText"></span></div>
+        <div class="meter" id="ttsMeter" hidden><span id="ttsLevel"></span></div>
+        <label class="row" id="voiceRow"><span>Stimme (Deutsch)</span><select id="voice"></select></label>
         <label class="row"><span>Stimme (English)</span><select id="voiceEn"></select></label>
         <label class="row"><span>Tempo</span><input type="range" min="0.6" max="1.6" step="0.1" data-set="rate" data-num></label>
         <label class="row"><span>Lautstärke</span><input type="range" min="0" max="1" step="0.1" data-set="volume" data-num></label>
         <div class="row"><span class="muted small" id="voiceHint"></span><button class="btn" id="testVoice">Probe</button></div>
+      </div>
+      <div class="card" id="modSettingsCard" hidden>
+        <h3>Einstellungen für Mods</h3>
+        <div id="modSettings"></div>
       </div>
       <div class="card">
         <h3>Mod-Updates</h3>

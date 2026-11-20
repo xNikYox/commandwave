@@ -11,6 +11,8 @@ const updater = require("./core/updater");
 const { START_APPS_CMD, toSlots } = require("./core/apps");
 const { execFile, spawn } = require("node:child_process");
 const selfUpdate = require("./core/selfupdate");
+const routines = require("./core/routines");
+const tts = require("./core/tts");
 
 /* Unerwartete Fehler: ins Protokoll (…\CommandWave\fehler.log) statt Absturz-Fenster; im Test auch ausgeben */
 const FULLTEST = process.argv.includes("--fulltest");
@@ -47,6 +49,10 @@ const MODS_DIR = path.join(DATA, "mods");
 const DEFAULT_MODS = path.join(RES, app.isPackaged ? "mods-default" : "mods");
 const SETTINGS_FILE = path.join(DATA, "einstellungen.json");
 const ALIASES_FILE = path.join(DATA, "aussprache.json"); // gelernte Aussprache (Einstellungen → Aussprache lernen)
+const ROUTINES_FILE = path.join(DATA, "routinen.json"); // Routinen (Fenster → Routinen)
+const NOTES_FILE = path.join(DATA, "mod-data", "notizen.json"); // Notizen der Mod „notizen“ (auch im Fenster)
+const PIPER_DIR = path.join(DATA, "piper"); // Piper und Stimmen (einmal geladen, siehe core/tts.js)
+const TTS_DIR = path.join(DATA, "tts"); // gesprochene Sätze als WAV (das Fenster spielt sie ab)
 // Testmodus (GitHub Actions): Fenster unsichtbar laden, Erkennung prüfen, Ergebnis ausgeben, beenden
 const SMOKE = process.argv.includes("--smoke");
 /** Offizielle Mod-Quelle: hier liegen die mitgelieferten Mods und neue Mods von CommandWave */
@@ -56,6 +62,7 @@ const DEFAULTS = {
   hotkey: "Control+Space",
   hotkeyLabel: "Strg + Leertaste", // Anzeige so, wie die Taste auf der Tastatur heißt (z. B. „Strg + #“)
   language: "de", // "de" | "en" | "both" (beide gleichzeitig – braucht mehr Speicher)
+  tts: "windows", // Sprachausgabe: "windows" oder eine Piper-Stimme ("piper-kerstin", "piper-thorsten") – siehe core/tts.js
   voice: "", // leer = erste deutsche Stimme
   voiceEn: "", // leer = erste englische Stimme
   rate: 1,
@@ -78,6 +85,7 @@ const DEFAULTS = {
   sources: [OFFICIAL], // Mod-Quellen (siehe core/updater.js)
   trusted: [updater.sourceId(OFFICIAL)], // aus diesen Quellen kommen auch neue Mods ohne Nachfrage
   disabled: [], // abgeschaltete Mods
+  modSettings: {}, // Einstellungen der Mods („settings“ in der mod.json): { discord: { mute: "^+m" }, … }
 };
 
 let settings = loadSettings();
@@ -122,14 +130,52 @@ function saveAliases(a) {
 const asks = new Map();
 let askId = 0;
 function ask(question, lang) {
-  if (!alive()) return Promise.resolve(null);
+  if (!alive()) createWindow(false); // Rückfrage auch, wenn das Fenster gerade geschlossen ist (z. B. aus einer Routine)
   const id = ++askId;
   return new Promise((resolve) => {
     const t = setTimeout(() => asks.delete(id) && resolve(null), 30000);
     asks.set(id, (text) => (clearTimeout(t), asks.delete(id), resolve(text)));
-    send("ask", { id, say: question, lang });
+    whenWindowReady(() => send("ask", { id, say: question, lang }));
   });
 }
+
+/* ---------------- Liste im Fenster und im Overlay (Notizen, Dateien zur Auswahl) ----------------
+ * Bei einer Auswahl kann man die Nummer sagen oder einen Eintrag anklicken – der Klick beantwortet die laufende Rückfrage. */
+let listTimer = null;
+function showList(title, items, opts = {}) {
+  clearTimeout(listTimer);
+  const d = { title: String(title || ""), items: (items || []).slice(0, 50).map(String), choose: !!opts.choose };
+  send("list", d);
+  overlayList(d);
+  // nur zum Anschauen: nach einer Weile wieder ausblenden
+  if (d.items.length && !d.choose) listTimer = setTimeout(() => overlayList({ items: [] }), 15000);
+}
+ipcMain.handle("list:pick", (_e, n) => {
+  const last = [...asks.keys()].pop();
+  if (last == null) return false;
+  asks.get(last)(`nummer ${Number(n)}`);
+  return true;
+});
+
+/** Fenster laden (auch versteckt) und danach fn ausführen */
+function whenWindowReady(fn) {
+  if (!alive()) createWindow(false);
+  win.webContents.isLoading() ? win.webContents.once("did-finish-load", () => setTimeout(fn, 1500)) : fn();
+}
+
+/** Vorlesen und warten, bis es fertig ist (Routinen: Schritte nacheinander, nichts wird abgeschnitten) */
+const spoken = new Map();
+let speakId = 0;
+function speakWait(text, lang) {
+  if (!text) return Promise.resolve();
+  const id = ++speakId;
+  return new Promise((resolve) => {
+    const t = setTimeout(() => spoken.delete(id) && resolve(), 60000);
+    spoken.set(id, () => (clearTimeout(t), spoken.delete(id), resolve()));
+    whenWindowReady(() => send("speakWait", { id, text, lang }));
+  });
+}
+ipcMain.handle("speak:done", (_e, id) => spoken.get(id)?.());
 
 /* ---------------- Assistent ---------------- */
 const actions = createActions({
@@ -163,8 +209,135 @@ const assistant = new Assistant({
     win.webContents.isLoading() ? win.webContents.once("did-finish-load", () => setTimeout(go, 1500)) : go();
   },
   reveal: (file) => shell.showItemInFolder(String(file)),
+  showList,
+  modSettings: (id) => settings.modSettings?.[id] || {},
+  // für die Mod „routinen“: Liste (ohne Schritte) und Starten
+  routines: {
+    list: () => loadRoutines().map((r) => ({ id: r.id, name: r.name, enabled: r.enabled, phrases: r.phrases, steps: r.steps.length })),
+    run: (id) => runRoutine(id, "Sprache"),
+  },
 });
 assistant.aliases = loadAliases();
+
+/* ---------------- Routinen ----------------
+ * Schritte laufen nacheinander durch den normalen Assistenten (alle Mods gehen), Fehler halten die anderen nicht auf. */
+function loadRoutines() {
+  try {
+    return (JSON.parse(fs.readFileSync(ROUTINES_FILE, "utf8")).routines || []).map((r) => routines.normalize(r)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function saveRoutines(list) {
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(ROUTINES_FILE, JSON.stringify({ routines: list }, null, 2));
+  scheduler.update(list);
+  reloadMods(); // Sätze und Namen der Routinen neu in die Erkennung
+}
+const running = new Set();
+async function runRoutine(id, why = "") {
+  const r = loadRoutines().find((x) => x.id === id);
+  if (!r) throw new Error("Routine nicht gefunden");
+  if (running.has(id)) return { ok: false, busy: true }; // läuft schon (z. B. ruft sich selbst auf)
+  running.add(id);
+  touch();
+  log("Routine", r.name, "startet", why ? `(${why})` : "");
+  send("routine", { id, running: true });
+  const lang = settings.language === "en" ? "en" : "de";
+  const exec = {
+    // ein Satz wie gesprochen – mit Antwort; „Diesen Befehl kenne ich leider nicht.“ zählt als Fehler
+    command: async (text) => {
+      const res = await assistant.handle(text, lang);
+      await speakWait(res.say, res.lang);
+      if (!res.ok) throw new Error(res.error || res.say || "nicht verstanden");
+    },
+    app: async (target) => {
+      const key = String(target).toLowerCase().trim();
+      const v = assistant.slots.app?.[key] ?? Object.entries(assistant.slots.app || {}).find(([, x]) => x && typeof x === "object" && String(x.label || "").toLowerCase() === key)?.[1];
+      await actions.run({ target: v ? (typeof v === "object" ? v.target : v) : target });
+    },
+    website: (url) => actions.open({ target: url }),
+    volume: async (value) => {
+      const res = await actions.volume({ value: value / 100 });
+      if (res && res.ok === false) throw new Error(res.error || "Lautstärke");
+    },
+    wait: (sec) => new Promise((ok) => setTimeout(ok, sec * 1000)),
+    say: (text) => speakWait(text, lang),
+  };
+  try {
+    const res = await routines.runSteps(r, exec, { onStep: (i) => send("routine", { id, running: true, step: i }) });
+    if (!res.ok) log("Routine", r.name, "Fehler:", JSON.stringify(res.failed.map((f) => [f.label, f.error])));
+    await speakWait(routines.summary(r.name, res), "de");
+    return res;
+  } finally {
+    running.delete(id);
+    send("routine", { id, running: false });
+  }
+}
+const scheduler = new routines.Scheduler({ run: (r) => runRoutine(r.id, "Uhrzeit").catch((e) => log("Routine:", e.message)) });
+
+/* ---------------- Natürliche Stimme (Piper) ----------------
+ * Einmal laden (mit Bestätigung im Fenster), dann offline: piper.exe läuft im Hintergrund und schreibt je Satz eine WAV. */
+let piper = null; // { id, rate, engine }
+let ttsInstall = null;
+let ttsFile = 0;
+function piperEngine() {
+  const id = settings.tts;
+  if (!tts.isPiper(id) || !tts.isInstalled(PIPER_DIR, id)) return null;
+  if (piper && piper.id === id && piper.rate === settings.rate) return piper.engine;
+  piper?.engine.stop();
+  const p = tts.paths(PIPER_DIR, id);
+  piper = { id, rate: settings.rate, engine: new tts.PiperEngine({ exe: p.exe, model: p.model, rate: Number(settings.rate) || 1 }) };
+  return piper.engine;
+}
+ipcMain.handle("tts:status", () => Object.fromEntries(Object.keys(tts.VOICES).map((id) => [id, { label: tts.VOICES[id].label, installed: tts.isInstalled(PIPER_DIR, id),
+  bytes: tts.missing(PIPER_DIR, id).reduce((a, x) => a + x.size, 0) }])));
+ipcMain.handle("tts:install", async (_e, id) => {
+  if (!tts.isPiper(id)) return { ok: false, error: "Unbekannte Stimme" };
+  if (ttsInstall) return { ok: false, error: "Es wird schon geladen." };
+  try {
+    ttsInstall = tts.install(PIPER_DIR, id, { onProgress: (p) => send("ttsProgress", { id, ...p }) });
+    await ttsInstall;
+    return { ok: true };
+  } catch (e) {
+    log("Piper laden:", e.message);
+    return { ok: false, error: e.message };
+  } finally {
+    ttsInstall = null;
+  }
+});
+// Satz sprechen lassen → { ok, url } (cw://app/tts/…wav) oder { ok: false, error } – dann nimmt das Fenster die Windows-Stimme
+ipcMain.handle("tts:synth", async (_e, text) => {
+  try {
+    const engine = piperEngine();
+    if (!engine) return { ok: false, error: "Piper-Stimme nicht eingerichtet" };
+    fs.mkdirSync(TTS_DIR, { recursive: true });
+    const name = `satz-${Date.now()}-${++ttsFile}.wav`;
+    await engine.synth(String(text || "").slice(0, 2000), path.join(TTS_DIR, name));
+    // alte Sätze aufräumen (die letzten 10 bleiben)
+    for (const f of fs.readdirSync(TTS_DIR).filter((f) => f.endsWith(".wav")).sort().slice(0, -10)) fs.rmSync(path.join(TTS_DIR, f), { force: true });
+    return { ok: true, url: "cw://app/tts/" + name };
+  } catch (e) {
+    log("Piper:", e.message);
+    piper?.engine.stop();
+    piper = null;
+    return { ok: false, error: e.message };
+  }
+});
+
+/* ---------------- Notizen (Mod „notizen“) – auch im Fenster ansehen, hinzufügen, löschen ---------------- */
+function loadNotes() {
+  try {
+    return (JSON.parse(fs.readFileSync(NOTES_FILE, "utf8")).notes || []).filter((x) => x && x.text);
+  } catch {
+    return [];
+  }
+}
+function saveNotes(notes) {
+  fs.mkdirSync(path.dirname(NOTES_FILE), { recursive: true });
+  fs.writeFileSync(NOTES_FILE, JSON.stringify({ notes }, null, 2));
+  return notes;
+}
 
 function reloadMods() {
   const r = assistant.reload(settings.disabled);
@@ -359,7 +532,8 @@ function tail(file, lines = 150) {
 }
 function buildReport() {
   const os = require("node:os");
-  const { sources, trusted, ...s } = settings;
+  const { sources, trusted, modSettings, ...s } = settings;
+  s.modSettings = Object.keys(modSettings || {}); // keine Passwörter (OBS) im Bericht
   const m = app.getAppMetrics();
   return [
     `CommandWave-Fehlerbericht · ${new Date().toISOString()}`,
@@ -370,6 +544,7 @@ function buildReport() {
     `Mod-Fehler: ${JSON.stringify(assistant.errors)} · Mod-Updates: ${JSON.stringify({ errors: updates.errors, checkedAt: updates.checkedAt })}`,
     `Quellen: ${(sources || []).map((x) => x.repo || x.path || x.url).join(", ")} · Apps gefunden: ${foundApps} · Befehle: ${assistant.compiled.length}`,
     `Einstellungen: ${JSON.stringify(s)}`,
+    `Routinen: ${loadRoutines().length} · Piper: ${Object.keys(tts.VOICES).filter((id) => tts.isInstalled(PIPER_DIR, id)).join(", ") || "–"}`,
     "",
     "===== fehler.log =====",
     tail("fehler.log"),
@@ -484,9 +659,38 @@ function overlayUpdate(d) {
     }
   }
   if (overlay && !overlay.isDestroyed()) overlay.webContents.send("update", d);
-  if (!busy && overlayShown) hideOverlay(d.mode === "error" ? 4000 : 2500);
+  if (!busy && overlayShown && !overlayListOn) hideOverlay(d.mode === "error" ? 4000 : 2500);
 }
 ipcMain.on("overlay", (_e, d) => overlayUpdate(d));
+
+/** Liste im Overlay (Notizen, Dateien zur Auswahl): Overlay wird höher; leere Liste = wieder klein */
+let overlayListOn = false;
+function overlayList(d) {
+  const items = d.items || [];
+  if (!items.length) {
+    if (!overlayListOn) return;
+    overlayListOn = false;
+    if (overlay && !overlay.isDestroyed()) {
+      overlay.webContents.send("update", { list: null });
+      const b = overlay.getBounds();
+      overlay.setBounds({ ...b, y: b.y + b.height - OV.h, height: OV.h });
+    }
+    hideOverlay(1500);
+    return;
+  }
+  const mainVisible = alive() && win.isVisible() && !win.isMinimized() && win.isFocused();
+  if (!settings.overlay || mainVisible) return; // das Fenster zeigt die Liste selbst
+  clearTimeout(overlayHide);
+  overlayListOn = true;
+  const o = ensureOverlay();
+  const h = OV.h + 30 + Math.min(items.length, 10) * 24;
+  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  o.setBounds({ x: Math.round(wa.x + (wa.width - OV.w) / 2), y: wa.y + wa.height - h - 28, width: OV.w, height: h });
+  const go = () => o.webContents.send("update", { list: { title: d.title, items: items.slice(0, 10), more: Math.max(0, items.length - 10), choose: d.choose } });
+  o.webContents.isLoading() ? o.webContents.once("did-finish-load", go) : go();
+  o.showInactive();
+  overlayShown = true;
+}
 
 function showWindow() {
   if (!alive()) return createWindow(true);
@@ -684,12 +888,56 @@ ipcMain.handle("settings:save", (_e, patch) => {
     hotkeyError = null;
   }
   saveSettings(p);
-  if ("autostart" in p && app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, args: ["--hidden"] });
+  if ("autostart" in p) syncAutostart();
   if ("disabled" in p) reloadMods();
   if ("overlay" in p && !settings.overlay) hideOverlay(0);
   if ("language" in p) send("mods", modsState()); // Fenster lädt die passenden Sprachmodelle
   if (tray && "hotkey" in p) buildTray();
   return { settings, hotkeyError };
+});
+// Routinen: Liste, speichern (neu/ändern), löschen, von Hand starten, Wörter prüfen
+ipcMain.handle("routines:list", () => ({ list: loadRoutines().map((r) => ({ ...r, triggerLabel: routines.triggerLabel(r), stepLabels: r.steps.map(routines.stepLabel), next: routines.nextRun(r, new Date())?.getTime() || null })),
+  running: [...running], autostart: !!settings.autostart, packaged: app.isPackaged }));
+ipcMain.handle("routines:save", (_e, r) => {
+  const n = routines.normalize(r);
+  if (!n) return { ok: false, error: "Bitte einen Namen eingeben." };
+  const list = loadRoutines();
+  const i = list.findIndex((x) => x.id === n.id);
+  i >= 0 ? (list[i] = n) : list.push(n);
+  saveRoutines(list);
+  return { ok: true, routine: n };
+});
+ipcMain.handle("routines:delete", (_e, id) => (saveRoutines(loadRoutines().filter((x) => x.id !== id)), { ok: true }));
+ipcMain.handle("routines:run", (_e, id) => {
+  runRoutine(id, "von Hand").catch((e) => log("Routine:", e.message));
+  return { ok: true };
+});
+// Kennt die Erkennung die Wörter eines Auslöse-Satzes? (sonst hört sie ihn nie – dann so schreiben, wie es klingt)
+let vocabCache = null;
+ipcMain.handle("routines:check", (_e, phrases) => {
+  try {
+    const lang = settings.language === "en" ? "en" : "de";
+    vocabCache ||= require("./core/vocab").readVocabulary(path.join(RES, "models", `vosk-model-${lang}.tar.gz`), path.join(DATA, `wortschatz-${lang}.txt`));
+    return { ok: true, unknown: require("./core/vocab").unknownWords([].concat(phrases || []).map(routines.cleanPhrase), vocabCache) };
+  } catch (e) {
+    return { ok: false, error: e.message, unknown: [] };
+  }
+});
+// Notizen im Fenster
+ipcMain.handle("notes:list", () => loadNotes());
+ipcMain.handle("notes:add", (_e, text) => {
+  const t = String(text || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 500);
+  return t ? saveNotes([...loadNotes(), { id: Date.now().toString(36), text: t.charAt(0).toUpperCase() + t.slice(1), at: Date.now() }]) : loadNotes();
+});
+ipcMain.handle("notes:delete", (_e, id) => saveNotes(loadNotes().filter((x) => x.id !== id)));
+// Einstellungen einer Mod („settings“ in der mod.json)
+ipcMain.handle("modSettings:save", (_e, id, patch) => {
+  const mod = assistant.mods.find((m) => m.id === id);
+  if (!mod) return { settings };
+  const keys = (mod.settings || []).map((x) => x.key);
+  const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k, v]) => keys.includes(k) && typeof v === "string").map(([k, v]) => [k, v.slice(0, 200)]));
+  saveSettings({ modSettings: { ...settings.modSettings, [id]: { ...(settings.modSettings?.[id] || {}), ...clean } } });
+  return { settings };
 });
 ipcMain.handle("mods:reload", async () => (reloadMods(), await discoverApps(), modsState()));
 ipcMain.handle("mods:folder", () => shell.openPath(MODS_DIR));
@@ -751,6 +999,16 @@ ipcMain.handle("overlay:test", () => new Promise((resolve) => {
 
 let hotkeyError = null;
 
+/** „Mit Windows starten“: Windows-Anmeldung an die Einstellung angleichen (auch beim Start – falls sie verloren ging) */
+function syncAutostart() {
+  if (!app.isPackaged) return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!settings.autostart, args: ["--hidden"] });
+  } catch (e) {
+    log("Autostart:", e.message);
+  }
+}
+
 /* ---------------- Start ---------------- */
 app.on("second-instance", showWindow);
 
@@ -765,6 +1023,7 @@ app.whenReady().then(async () => {
     if (rel.startsWith("vosk/")) (base = path.join(ROOT, "node_modules", "vosk-browser", "dist")), (sub = rel.slice(5));
     else if (rel.startsWith("tjs/")) (base = path.join(RES, "vendor", "transformers")), (sub = rel.slice(4)); // Whisper-Laufzeit
     else if (SMOKE && rel.startsWith("testaudio/")) (base = path.join(DATA, "testaudio")), (sub = rel.slice(10));
+    else if (rel.startsWith("tts/")) (base = TTS_DIR), (sub = rel.slice(4)); // Piper-Sätze
     else if (rel.startsWith("model/")) (base = path.join(RES, "models")), (sub = rel.slice(6));
     const file = path.join(base, sub);
     if (u.host !== "app" || !file.startsWith(base + path.sep) || !fs.existsSync(file)) return new Response("Nicht gefunden", { status: 404 });
@@ -832,6 +1091,14 @@ app.whenReady().then(async () => {
   if (!SMOKE && settings.checkOnStart && settings.sources.length) setTimeout(() => checkUpdates(), 4000);
   if (!SMOKE) setInterval(() => settings.sources.length && checkUpdates(), 6 * 3600 * 1000); // Mods alle 6 Stunden
   setupAppUpdates();
+  if (!SMOKE && !FULLTEST) {
+    syncAutostart();
+    scheduler.update(loadRoutines());
+    // Routinen „beim Start“: einmal, wenn das Fenster bereit ist (Erkennung geladen, Stimme da)
+    setTimeout(() => {
+      for (const r of loadRoutines().filter((x) => x.enabled && x.onStart)) runRoutine(r.id, "Start").catch((e) => log("Routine:", e.message));
+    }, 12000);
+  }
 });
 
 app.on("window-all-closed", () => {
@@ -839,6 +1106,7 @@ app.on("window-all-closed", () => {
 });
 app.on("before-quit", () => {
   quitting = true;
+  piper?.engine.stop();
   if (overlay && !overlay.isDestroyed()) overlay.destroy();
 });
 app.on("child-process-gone", (_e, d) => {

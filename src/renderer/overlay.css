@@ -8,3 +8,11 @@ html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
 .heard:empty { display: none; }
 canvas { flex: none; }
 body[data-mode="error"] .pill { border-color: rgba(248, 113, 113, .6); }
+/* Liste (Notizen, Dateien zur Auswahl) unter der Anzeige */
+.pill { bottom: auto; height: 80px; }
+.list { position: absolute; left: 8px; right: 8px; top: 96px; bottom: 8px; padding: 8px 16px; border-radius: 16px; overflow: hidden;
+  background: rgba(18, 20, 26, .94); border: 1px solid rgba(124, 108, 255, .35); color: #e8ecf4; font-size: 13px; }
+.list .ltitle { font-weight: 600; color: #c8d0e0; margin-bottom: 4px; }
+.list ol { margin: 0; padding-left: 22px; }
+.list li { line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list .more { color: #9aa4b8; margin-top: 2px; }

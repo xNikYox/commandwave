@@ -1,6 +1,7 @@
 // CommandWave – Sprache im Fenster, komplett offline:
 //   Erkennung: Vosk (WebAssembly) mit dem deutschen Modell aus der App; nur die Sätze aus den Mods sind erlaubt (Grammatik).
-//   Ausgabe:   die auf Windows installierten Stimmen (z. B. „Microsoft Hedda“, „Katja“) über speechSynthesis.
+//   Ausgabe:   die auf Windows installierten Stimmen (z. B. „Microsoft Hedda“, „Katja“) über speechSynthesis –
+//              oder (ab 2.0) eine Piper-Stimme: der Hauptprozess macht eine WAV-Datei, das Fenster spielt sie ab.
 // Das Mikrofon ist nur offen, solange zugehört wird.
 (function () {
   "use strict";
@@ -14,6 +15,8 @@
       this.urls = {};
       this.session = null;
       this.level = 0;
+      this.speaking = Promise.resolve(); // läuft gerade eine Ausgabe? (Routinen warten darauf)
+      this.audio = null;
     }
 
     /** Sprachmodelle laden, z. B. { de: url, en: url } (parallel, dauert ein paar Sekunden) */
@@ -388,11 +391,48 @@
       });
     }
 
-    /** Sprechen mit lokaler Stimme in der passenden Sprache → Promise, wenn fertig */
-    speak(text, { voice = "", rate = 1, volume = 1, lang = "de" } = {}) {
+    /**
+     * Sprechen in der passenden Sprache → Promise, wenn fertig. Ein neuer Satz unterbricht den alten.
+     * backend: "windows" (Windows-Stimmen) oder eine Piper-Stimme; synth(text) → { ok, url } liefert dann die WAV.
+     * Klappt Piper nicht, spricht die Windows-Stimme (onFallback(fehler) meldet es). Piper-Stimmen sind deutsch.
+     */
+    speak(text, opts = {}) {
+      this.cancel();
+      const piper = opts.backend && opts.backend !== "windows" && opts.synth && (opts.lang || "de") === "de";
+      const run = !text ? Promise.resolve() : piper ? this.speakFile_(text, opts).catch((e) => (opts.onFallback?.(e), this.speakWindows_(text, opts))) : this.speakWindows_(text, opts);
+      this.speaking = run.catch(() => {});
+      return run;
+    }
+
+    /** Laufende Ausgabe abbrechen (Windows-Stimme und Piper) */
+    cancel() {
+      speechSynthesis.cancel();
+      this.token = null;
+      const a = this.audio;
+      this.audio = null;
+      if (a) a.pause(); // „pause“ beendet das Warten in speakFile_
+    }
+
+    /** Piper: WAV holen und abspielen */
+    async speakFile_(text, { synth, volume = 1 }) {
+      const token = (this.token = {});
+      const r = await synth(text);
+      if (!r || !r.ok) throw new Error(r?.error || "Piper antwortet nicht");
+      if (this.token !== token) return; // inzwischen unterbrochen
+      await new Promise((resolve, reject) => {
+        const a = new Audio(new URL(r.url.replace(/^cw:\/\/app\//, ""), location.href).href);
+        a.volume = Math.max(0, Math.min(1, Number(volume)));
+        this.audio = a;
+        a.onended = a.onpause = () => resolve();
+        a.onerror = () => reject(new Error("WAV nicht abspielbar"));
+        a.play().catch(reject);
+      });
+    }
+
+    /** Windows-Stimme (speechSynthesis) */
+    speakWindows_(text, { voice = "", rate = 1, volume = 1, lang = "de" } = {}) {
       return new Promise((resolve) => {
         if (!text) return resolve();
-        speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
         const all = this.voices();
         const wantLang = lang === "en" ? "en" : "de";

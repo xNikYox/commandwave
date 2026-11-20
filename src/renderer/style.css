@@ -111,3 +111,32 @@ body[data-mode="error"] .status { color: var(--bad); }
 /* Hinweis oben, wenn Updates klemmen */
 .banner { margin: 8px 16px 0; padding: 10px 12px; border-radius: 12px; background: rgba(250, 204, 21, .1); border: 1px solid rgba(250, 204, 21, .45); font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .banner-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* 2.0: Liste auf der Bühne (Notizen, Dateien zur Auswahl) */
+.listcard { align-self: stretch; background: var(--panel); border: 1px solid rgba(124, 108, 255, .35); border-radius: 12px; padding: 8px 12px; margin: 4px 0; font-size: 13px; }
+.listcard ol { margin: 4px 0 0; padding-left: 22px; }
+.listcard li { padding: 2px 0; overflow-wrap: anywhere; }
+.listcard.pick li { cursor: pointer; border-radius: 6px; }
+.listcard.pick li:hover { background: var(--panel2); color: var(--b); }
+
+/* Routinen & Notizen */
+.tab { padding: 7px 4px; font-size: 13px; }
+.routine { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; }
+.routine.off { opacity: .55; }
+.routine .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.routine small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.routine .running { color: var(--ok); font-weight: 600; }
+.trow, .srow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-top: 1px dashed var(--line); }
+.trow input[type=time], .srow select, .srow input { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 7px; outline: none; }
+.srow input { flex: 1; min-width: 120px; }
+.srow input[type=number] { flex: none; width: 80px; min-width: 0; }
+.days { display: flex; gap: 3px; }
+.days label { font-size: 12px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; user-select: none; }
+.days input { display: none; }
+.days label:has(input:checked) { background: linear-gradient(135deg, var(--a), var(--b)); color: #fff; border-color: transparent; }
+.mini { padding: 3px 8px; font-size: 12px; }
+.notec { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin-bottom: 5px; }
+.notec .n { color: var(--b); font-weight: 600; margin-right: 6px; }
+.notec small { display: block; color: var(--muted); font-size: 11.5px; }
+.modset h4 { margin: 8px 0 0; font-size: 13px; }
+.rbtns { margin-top: 10px; }
