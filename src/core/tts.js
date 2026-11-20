@@ -145,7 +145,10 @@ class PiperEngine {
     if (this.proc) return this.proc;
     // Tempo: Piper rechnet in Lautlänge (2 = halb so schnell)
     const scale = Math.max(0.5, Math.min(2, 1 / (Number(this.rate) || 1))).toFixed(2);
-    const p = this.sp(this.exe, ["--model", this.model, "--json-input", "--quiet", "--length_scale", scale], { windowsHide: true, cwd: path.dirname(this.exe) });
+    // Pfade relativ zum Stimmen-Ordner: piper.exe kommt mit Umlauten im Benutzernamen (C:\Users\Jürgen\…) nicht klar
+    this.cwd = path.dirname(this.model);
+    const espeak = path.relative(this.cwd, path.join(path.dirname(this.exe), "espeak-ng-data"));
+    const p = this.sp(this.exe, ["--model", path.basename(this.model), "--espeak_data", espeak, "--json-input", "--quiet", "--length_scale", scale], { windowsHide: true, cwd: this.cwd });
     this.proc = p;
     let buf = "";
     let err = "";
@@ -181,7 +184,7 @@ class PiperEngine {
         resolve: () => (clearTimeout(t), (this.waiting = null), fs.existsSync(outFile) ? resolve(outFile) : reject(new Error("Piper hat keine Datei geschrieben"))),
         reject: (e) => (clearTimeout(t), (this.waiting = null), reject(e)),
       };
-      p.stdin.write(JSON.stringify({ text: String(text).replace(/\s+/g, " ").trim(), output_file: outFile }) + "\n");
+      p.stdin.write(JSON.stringify({ text: String(text).replace(/\s+/g, " ").trim(), output_file: path.relative(this.cwd, outFile) }) + "\n");
     });
     const next = this.queue.then(run, run);
     this.queue = next.catch(() => {});

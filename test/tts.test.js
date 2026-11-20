@@ -93,7 +93,7 @@ test("Einrichten: lädt nur was fehlt, prüft jede Datei, entpackt Piper", async
 /** Attrappe für piper.exe: liest JSON-Zeilen, schreibt die Datei, meldet den Pfad */
 function fakePiper({ crash = false } = {}) {
   const runs = [];
-  const sp = (exe, args) => {
+  const sp = (exe, args, opts) => {
     const p = new EventEmitter();
     p.stdout = new EventEmitter();
     p.stderr = new EventEmitter();
@@ -107,7 +107,8 @@ function fakePiper({ crash = false } = {}) {
             p.stderr.emit("data", "Modell kaputt\n");
             return p.emit("exit", 1);
           }
-          fs.writeFileSync(j.output_file, Buffer.alloc(20000));
+          const out = path.resolve(opts.cwd, j.output_file); // relativ zum Stimmen-Ordner
+          fs.writeFileSync(out, Buffer.alloc(20000));
           p.stdout.emit("data", j.output_file + "\n");
         });
       },
@@ -122,15 +123,15 @@ function fakePiper({ crash = false } = {}) {
 test("Sprechen: ein Prozess für alle Sätze, nacheinander, Tempo, Fehler", async () => {
   const dir = tmp();
   const f = fakePiper();
-  const e = new T.PiperEngine({ exe: "piper.exe", model: "m.onnx", rate: 1.25, sp: f.sp });
+  const e = new T.PiperEngine({ exe: "piper.exe", model: path.join(dir, "m.onnx"), rate: 1.25, sp: f.sp });
   const [a, b] = await Promise.all([e.synth("Hallo, ich bin CommandWave.", path.join(dir, "1.wav")), e.synth("Editor wird gestartet", path.join(dir, "2.wav"))]);
   assert.equal(path.basename(a), "1.wav");
   assert.equal(path.basename(b), "2.wav");
   assert.equal(f.runs.length, 1, "Modell bleibt geladen");
   assert.deepEqual(f.runs[0].lines, ["Hallo, ich bin CommandWave.", "Editor wird gestartet"]);
-  assert.deepEqual(f.runs[0].args, ["--model", "m.onnx", "--json-input", "--quiet", "--length_scale", "0.80"]);
+  assert.deepEqual(f.runs[0].args, ["--model", "m.onnx", "--espeak_data", path.relative(dir, "espeak-ng-data"), "--json-input", "--quiet", "--length_scale", "0.80"]);
   e.stop();
-  const bad = new T.PiperEngine({ exe: "piper.exe", model: "m.onnx", sp: fakePiper({ crash: true }).sp });
+  const bad = new T.PiperEngine({ exe: "piper.exe", model: path.join(dir, "m.onnx"), sp: fakePiper({ crash: true }).sp });
   await assert.rejects(bad.synth("Hallo", path.join(dir, "3.wav")), /Piper beendet \(Code 1\): Modell kaputt/);
   const missingExe = new T.PiperEngine({ exe: "gibtsnicht", model: "m.onnx", sp: () => {
     const p = new EventEmitter();
