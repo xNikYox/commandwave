@@ -1,0 +1,9 @@
+{
+  "id": "notizen",
+  "name": "Notizen",
+  "version": "1.0.0",
+  "minApp": "2.0.0",
+  "author": "CommandWave",
+  "description": "„Merke dir: Milch kaufen“, „Notiere Zahnarzt am Dienstag“, „Was habe ich mir gemerkt?“, „Lösche Notiz Nummer zwei“, „Lösche alle Notizen“. Alle Notizen stehen auch im Fenster unter Notizen. English: „Remember …“, „Read my notes“.",
+  "main": "main.js"
+}
