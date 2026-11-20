@@ -63,6 +63,7 @@ async function listen() {
   speech.stopWake(); // Aktivierungswort pausiert, solange CommandWave zuhört und antwortet
   $("#heard").hidden = true;
   $("#answer").hidden = true;
+  $("#listCard").hidden = true; // Liste vom letzten Befehl (z. B. Notizen) ausblenden
   try {
     await ensureModels();
     alarm.ctx?.suspend().catch(() => {}); // Weckton beim Zuhören pausieren, sonst versteht er „Wecker aus“ nicht
