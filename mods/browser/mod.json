@@ -2,6 +2,7 @@
   "id": "browser",
   "name": "Browser-Tabs",
   "version": "1.1.0",
+  "minApp": "1.3.0",
   "author": "CommandWave",
   "description": "„Schließe den Tab“, „Schließe den YouTube Tab“, „Schließe alle Amazon Tabs“, „Neuer Tab“, „Nächster Tab“, „Tab wiederherstellen“ – für Chrome, Edge, Firefox, Brave und Opera. Tipp: Namen, die die Spracherkennung nicht kennt, stehen in Lautschrift („red it“ = Reddit) – gesucht wird trotzdem der richtige Tab.",
   "main": "main.js",

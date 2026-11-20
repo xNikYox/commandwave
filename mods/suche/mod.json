@@ -2,6 +2,7 @@
   "id": "suche",
   "name": "Suche",
   "version": "1.1.0",
+  "minApp": "1.8.0",
   "author": "CommandWave",
   "description": "Im Internet suchen: „Suche auf YouTube“ – CommandWave fragt „Was soll ich suchen?“ und öffnet die Ergebnisse. Auch Google, Amazon, Wikipedia, eBay, Google Maps, Spotify. English: „Search on YouTube“.",
   "main": "main.js",

@@ -2,6 +2,7 @@
   "id": "lautstaerke",
   "name": "Lautstärke je App",
   "version": "1.0.0",
+  "minApp": "1.6.0",
   "author": "CommandWave",
   "description": "Lautstärke einzelner Programme wie im Windows-Lautstärkemixer: „Spotify leiser“, „Discord stumm“, „Chrome auf dreißig Prozent“, „Wie laut ist Spotify?“. English: „Turn Spotify down“, „Mute Discord“.",
   "main": "main.js",

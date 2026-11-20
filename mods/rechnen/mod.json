@@ -2,6 +2,7 @@
   "id": "rechnen",
   "name": "Rechnen & Umrechnen",
   "version": "1.0.0",
+  "minApp": "1.6.0",
   "author": "CommandWave",
   "description": "„Was ist fünf mal sieben?“, „Zwanzig Prozent von achtzig“, oder „Rechne etwas“ → „Fünf Meilen in Kilometer“. Plus, minus, mal, geteilt durch, hoch, Wurzel, Prozent; Länge, Gewicht, Volumen, Tempo, Temperatur. English: „What is five times seven“, „Convert something“.",
   "main": "main.js"

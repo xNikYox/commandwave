@@ -152,6 +152,8 @@ CommandWave prüft **beim Start** und bei **Mods → Nach Updates suchen**:
 
 Für ein Update: `version` in der `mod.json` erhöhen (z. B. `1.0.0` → `1.1.0`), `build-index.js` erneut ausführen, hochladen. Alle PCs mit dieser Quelle holen es sich beim nächsten Start.
 
+**Mod braucht eine neuere CommandWave?** In die `mod.json` z. B. `"minApp": "2.0.0"` schreiben. Ältere CommandWave-Versionen bekommen diese Mod-Version dann nicht (sie steht in der `index.json` unter `modsMinApp`, die erst CommandWave 2.0 liest), und ab 2.0 wird sie übersprungen, solange die App zu alt ist – die installierte ältere Version der Mod bleibt einfach. Im Fenster steht dann „braucht CommandWave 2.0.0“.
+
 ---
 
 ## 5. Für Entwickler: aus dem Quellcode starten und selbst bauen

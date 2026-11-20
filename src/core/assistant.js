@@ -47,7 +47,8 @@ class Assistant {
   }
 
   reload(disabled = this.opts.disabled || []) {
-    const host = { actions: this.opts.actions, say: this.opts.say, notify: this.opts.notify, log: this.opts.log, dataDir: this.opts.dataDir, sound: this.opts.sound, reveal: this.opts.reveal };
+    const host = { actions: this.opts.actions, say: this.opts.say, notify: this.opts.notify, log: this.opts.log, dataDir: this.opts.dataDir, sound: this.opts.sound, reveal: this.opts.reveal,
+      appVersion: this.opts.appVersion };
     const r = loadAll(this.opts.modsDir, host, disabled);
     this.mods = r.mods;
     this.errors = r.errors;

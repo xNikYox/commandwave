@@ -84,7 +84,7 @@ let settings = loadSettings();
 let win = null;
 let tray = null;
 let quitting = false;
-let updates = { list: [], errors: [], checkedAt: null, busy: false, installed: [] };
+let updates = { list: [], errors: [], held: [], checkedAt: null, busy: false, installed: [] };
 const log = (...a) => console.log("[CommandWave]", ...a);
 
 /* ---------------- Einstellungen ---------------- */
@@ -149,6 +149,7 @@ const actions = createActions({
 const assistant = new Assistant({
   modsDir: MODS_DIR,
   dataDir: DATA,
+  appVersion: app.getVersion(), // Mods mit „minApp“ über dieser Version werden nicht geladen
   actions,
   say: (text) => send("speak", text),
   notify: (title, body) => notify(title, body),
@@ -204,9 +205,12 @@ async function checkUpdates({ install = settings.autoUpdate } = {}) {
   send("mods", modsState());
   try {
     const installed = assistant.mods.map((m) => ({ id: m.id, version: m.version }));
-    const r = await updater.check(settings.sources, installed);
+    const r = await updater.check(settings.sources, installed, undefined, { appVersion: app.getVersion() });
     updates.list = r.updates;
     updates.errors = r.errors;
+    // neue Mod-Versionen, die eine neuere CommandWave brauchen: installierte Version bleibt
+    updates.held = r.held || [];
+    for (const h of updates.held) log(`Mod ${h.id} ${h.version} braucht CommandWave ${h.minApp} – bleibt bei der installierten Version`);
     updates.checkedAt = Date.now();
     // installierte Mods automatisch aktualisieren; neue Mods nur aus vertrauenswürdigen Quellen, sonst „Installieren“
     if (install) {
@@ -232,7 +236,7 @@ async function checkUpdates({ install = settings.autoUpdate } = {}) {
 async function installUpdate(id, reload = true) {
   const u = updates.list.find((x) => x.id === id);
   if (!u) throw new Error("Kein Update für " + id);
-  const r = await updater.install(u, MODS_DIR);
+  const r = await updater.install(u, MODS_DIR, undefined, { appVersion: app.getVersion() });
   updates.list = updates.list.filter((x) => x.id !== id);
   updates.installed = [...updates.installed.filter((x) => x.id !== id), { id, version: r.version, at: Date.now() }];
   log("Mod installiert:", id, r.version);

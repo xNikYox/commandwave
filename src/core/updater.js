@@ -7,7 +7,11 @@
 //
 // Jede Quelle hat eine index.json (erzeugt mit „npm run index“ bzw. scripts/build-index.js):
 //   { "mods": [ { "id": "uhrzeit", "version": "1.1.0", "name": "…", "description": "…", "path": "uhrzeit",
-//                 "files": [ { "path": "mod.json", "sha256": "…" }, { "path": "main.js", "sha256": "…" } ] } ] }
+//                 "files": [ { "path": "mod.json", "sha256": "…" }, { "path": "main.js", "sha256": "…" } ] } ],
+//     "modsMinApp": [ { …wie oben…, "minApp": "2.0.0" } ] }
+// Mods, die eine bestimmte CommandWave-Version brauchen („minApp“ in der mod.json), stehen in „modsMinApp“: Versionen
+// vor 2.0 kennen nur „mods“ und bekommen sie so nie. Ab 2.0 werden sie übersprungen, solange die App zu alt ist –
+// die installierte ältere Version der Mod bleibt dann einfach.
 // Ein Ordner ohne index.json wird direkt durchsucht.
 //
 // Ablauf: Versionen vergleichen → Dateien in einen Zwischenordner laden → jede Datei per SHA-256 prüfen →
@@ -15,7 +19,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const { compareVersions, validate } = require("./mods");
+const { compareVersions, validate, needsNewer } = require("./mods");
 
 const MAX_FILE = 5 * 1024 * 1024;
 const MAX_FILES = 200;
@@ -99,23 +103,37 @@ function buildIndex(root) {
       }
     };
     walk("");
-    mods.push({ id: json.id, version: json.version, name: json.name || json.id, description: json.description || "", path: d.name, script: !!json.main, files: files.sort((a, b) => a.path.localeCompare(b.path)) });
+    mods.push({ id: json.id, version: json.version, name: json.name || json.id, description: json.description || "", path: d.name, script: !!json.main,
+      ...(json.minApp ? { minApp: json.minApp } : {}), files: files.sort((a, b) => a.path.localeCompare(b.path)) });
   }
-  return { generated: new Date().toISOString(), mods: mods.sort((a, b) => a.id.localeCompare(b.id)) };
+  return splitIndex(mods);
+}
+
+/** Mods mit minApp getrennt ablegen (ältere Versionen lesen nur „mods“) */
+function splitIndex(mods) {
+  const list = [...mods].sort((a, b) => a.id.localeCompare(b.id));
+  return { generated: new Date().toISOString(), mods: list.filter((m) => !m.minApp), modsMinApp: list.filter((m) => m.minApp) };
 }
 
 /**
- * Was gibt es Neues? installed = [{ id, version }] → [{ id, from, to, source, entry, isNew }]
- * Gleiche Mod in mehreren Quellen: die höchste Version gewinnt.
+ * Was gibt es Neues? installed = [{ id, version }] → { updates: [{ id, from, to, source, entry, isNew }], errors, held }
+ * Gleiche Mod in mehreren Quellen: die höchste Version gewinnt, die zu dieser CommandWave-Version passt (opts.appVersion).
+ * held = Mods, deren neue Version eine neuere App braucht: [{ id, name, version, minApp }]
  */
-async function check(sources, installed, fetchImpl) {
+async function check(sources, installed, fetchImpl, opts = {}) {
   const found = new Map();
+  const held = new Map();
   const errors = [];
   for (const s of sources) {
     try {
       const idx = await openSource(s, fetchImpl).readIndex();
-      for (const e of idx.mods || []) {
+      for (const e of [...(idx.mods || []), ...(idx.modsMinApp || [])]) {
         if (!e || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(e.id || "") || !e.version || !Array.isArray(e.files) || !safeRel(e.path || e.id)) continue;
+        if (needsNewer(e, opts.appVersion)) {
+          const h = held.get(e.id);
+          if (!h || compareVersions(e.version, h.version) > 0) held.set(e.id, { id: e.id, name: e.name || e.id, version: e.version, minApp: e.minApp });
+          continue;
+        }
         const old = found.get(e.id);
         if (!old || compareVersions(e.version, old.entry.version) > 0) found.set(e.id, { entry: e, source: s });
       }
@@ -129,11 +147,17 @@ async function check(sources, installed, fetchImpl) {
     if (have && compareVersions(entry.version, have.version) <= 0) continue;
     list.push({ id, name: entry.name || id, description: entry.description || "", from: have?.version || null, to: entry.version, isNew: !have, script: !!entry.script, source, sourceLabel: sourceLabel(source), entry });
   }
-  return { updates: list.sort((a, b) => a.id.localeCompare(b.id)), errors };
+  // zurückgehalten: nur melden, wenn die zu neue Version wirklich neuer ist als alles, was installiert wird
+  const heldList = [...held.values()].filter((h) => {
+    const have = installed.find((m) => m.id === h.id);
+    const next = found.get(h.id);
+    return (!have || compareVersions(h.version, have.version) > 0) && (!next || compareVersions(h.version, next.entry.version) > 0);
+  });
+  return { updates: list.sort((a, b) => a.id.localeCompare(b.id)), errors, held: heldList.sort((a, b) => a.id.localeCompare(b.id)) };
 }
 
 /** Eine Mod installieren/aktualisieren (atomar, mit Sicherung) → { id, version, backup } */
-async function install(update, modsDir, fetchImpl) {
+async function install(update, modsDir, fetchImpl, opts = {}) {
   const { entry, source } = update;
   if (entry.files.length > MAX_FILES) throw new Error("Zu viele Dateien");
   if (!entry.files.some((f) => f.path === "mod.json")) throw new Error("mod.json fehlt in der Quelle");
@@ -154,6 +178,7 @@ async function install(update, modsDir, fetchImpl) {
     const v = validate(json, entry.id);
     if (v.error) throw new Error("mod.json: " + v.error);
     if (json.version !== entry.version) throw new Error(`Version in mod.json (${json.version}) passt nicht zur index.json (${entry.version})`);
+    if (needsNewer(json, opts.appVersion)) throw new Error(`braucht CommandWave ${json.minApp}`);
     // tauschen: alte Version sichern, neue an ihren Platz
     const target = path.join(modsDir, entry.id);
     let backup = null;
@@ -188,4 +213,4 @@ function pruneBackups(dir, id, keep) {
   for (const n of list.slice(0, Math.max(0, list.length - keep))) fs.rmSync(path.join(dir, n), { recursive: true, force: true });
 }
 
-module.exports = { check, install, buildIndex, openSource, sourceId, sourceLabel, sha256, safeRel };
+module.exports = { check, install, buildIndex, splitIndex, openSource, sourceId, sourceLabel, sha256, safeRel };

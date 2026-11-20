@@ -5,7 +5,9 @@
 //     "id": "apps", "name": "Apps starten", "version": "1.0.0", "author": "…", "description": "…",
 //     "slots":    { "app": { "editor": { "target": "notepad.exe", "label": "Editor" }, … } },
 //     "commands": [ { "phrases": ["öffne [die app] {app}"], "say": "{app} wird gestartet", "action": { "type": "run", "target": "{app.value}" } } ],
-//     "main": "main.js"      ← optional: eigene Logik in JavaScript (siehe Beispiel-Mod „uhrzeit“)
+//     "main": "main.js",     ← optional: eigene Logik in JavaScript (siehe Beispiel-Mod „uhrzeit“)
+//     "minApp": "2.0.0",     ← optional: braucht mindestens diese CommandWave-Version (sonst wird sie nicht geladen)
+//     "settings": [ { "key": "taste", "label": "Taste", "type": "text" | "password" | "hotkey", "default": "^+m" } ]   ← optional (ab 2.0)
 //   }
 // Mods werden nur gelesen – der Hauptcode der App bleibt unverändert. „Neu laden“ übernimmt Änderungen sofort.
 const fs = require("node:fs");
@@ -30,11 +32,41 @@ function validate(json, dirName) {
   }
   if (json.slots != null && (typeof json.slots !== "object" || Array.isArray(json.slots))) errors.push("slots muss ein Objekt sein");
   if (json.main != null && (typeof json.main !== "string" || json.main.includes("..") || path.isAbsolute(json.main))) errors.push("main ungültig");
+  if (json.minApp != null && !VERSION.test(String(json.minApp))) errors.push("minApp ungültig (z. B. 2.0.0)");
+  if (json.settings != null && (!Array.isArray(json.settings) || json.settings.some((x) => !x || !/^[\w-]{1,40}$/.test(x.key || "") || typeof x.label !== "string"))) errors.push("settings muss eine Liste aus { key, label } sein");
   return errors.length ? { error: errors.join("; ") } : { mod: json };
 }
 
+/** Braucht die Mod eine neuere CommandWave-Version? (ohne bekannte App-Version: nein) */
+const needsNewer = (json, appVersion) => !!(json && json.minApp && appVersion && compareVersions(json.minApp, appVersion) > 0);
+
 /**
- * Alle Mods aus einem Ordner laden. host = { actions, say, log, dataDir } (von der App).
+ * Mod braucht eine neuere App: die neueste gesicherte Version (mods/.backup), die noch passt → { json, base } oder null.
+ * So bleibt nach einem Update der Mod (oder wenn CommandWave älter ist als die Mod) die alte Version nutzbar.
+ */
+function compatibleBackup(modsDir, id, appVersion) {
+  const dir = path.join(modsDir, ".backup");
+  let best = null;
+  let names = [];
+  try {
+    names = fs.readdirSync(dir).filter((n) => n.startsWith(id + "-"));
+  } catch {
+    return null;
+  }
+  for (const n of names) {
+    try {
+      const json = JSON.parse(fs.readFileSync(path.join(dir, n, "mod.json"), "utf8"));
+      if (json.id !== id || validate(json).error || needsNewer(json, appVersion)) continue;
+      if (!best || compareVersions(json.version, best.json.version) > 0) best = { json, base: path.join(dir, n) };
+    } catch {
+      // kaputte Sicherung überspringen
+    }
+  }
+  return best;
+}
+
+/**
+ * Alle Mods aus einem Ordner laden. host = { actions, say, log, dataDir, appVersion } (von der App).
  * → { mods: [...], commands: [...], slots: {...}, errors: [{ dir, error }] }
  */
 function loadAll(modsDir, host, disabled = []) {
@@ -57,13 +89,28 @@ function loadAll(modsDir, host, disabled = []) {
       errors.push({ dir, error: "mod.json fehlt oder ist kaputt: " + e.message });
       continue;
     }
-    const { mod, error } = validate(json, dir);
+    let { mod, error } = validate(json, dir);
     if (error) {
       errors.push({ dir, error });
       continue;
     }
-    const info = { id: mod.id, name: mod.name || mod.id, version: mod.version, author: mod.author || "", description: mod.description || "", dir: base,
-      script: !!mod.main, enabled: !disabled.includes(mod.id), commands: 0, error: null, examples: [] };
+    let modDir = base;
+    let note = null;
+    if (needsNewer(mod, host.appVersion)) {
+      // zu neu für diese CommandWave-Version: gesicherte ältere Version nehmen, sonst nicht laden
+      const old = compatibleBackup(modsDir, mod.id, host.appVersion);
+      note = `Version ${mod.version} braucht CommandWave ${mod.minApp}`;
+      if (!old) {
+        mods.push({ id: mod.id, name: mod.name || mod.id, version: mod.version, author: mod.author || "", description: mod.description || "", dir: base, minApp: mod.minApp,
+          script: !!mod.main, enabled: false, commands: 0, error: `braucht CommandWave ${mod.minApp}`, examples: [], settings: [] });
+        errors.push({ dir, error: `braucht CommandWave ${mod.minApp} – bitte CommandWave aktualisieren` });
+        continue;
+      }
+      mod = old.json;
+      modDir = old.base;
+    }
+    const info = { id: mod.id, name: mod.name || mod.id, version: mod.version, author: mod.author || "", description: mod.description || "", dir: modDir, minApp: mod.minApp || null,
+      script: !!mod.main, enabled: !disabled.includes(mod.id), commands: 0, error: null, note, examples: [], settings: Array.isArray(mod.settings) ? mod.settings : [] };
     mods.push(info);
     if (!info.enabled) continue;
     // Platzhalter-Werte zusammenführen (mehrere Mods dürfen z. B. weitere Apps zu {app} beisteuern)
@@ -80,10 +127,10 @@ function loadAll(modsDir, host, disabled = []) {
     }
     if (mod.main) {
       try {
-        const file = path.resolve(base, mod.main);
+        const file = path.resolve(modDir, mod.main);
         delete require.cache[require.resolve(file)]; // neu laden erlaubt Änderungen ohne Neustart
         const fn = require(file);
-        const api = makeApi(mod, base, host, commands, slots, info);
+        const api = makeApi(mod, modDir, host, commands, slots, info);
         (typeof fn === "function" ? fn : fn.default)(api);
       } catch (e) {
         info.error = "main.js: " + e.message;
@@ -208,4 +255,4 @@ function compareVersions(a, b) {
   return pa < pb ? -1 : 1;
 }
 
-module.exports = { loadAll, validate, seedDefaults, compareVersions, readVersion, ACTIONS };
+module.exports = { loadAll, validate, seedDefaults, compareVersions, readVersion, needsNewer, compatibleBackup, ACTIONS };

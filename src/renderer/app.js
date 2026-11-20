@@ -376,13 +376,14 @@ function renderMods() {
         <small>${esc(x.description || "")}${x.script ? " · ⚠ enthält Programmcode – nur aus vertrauenswürdigen Quellen installieren" : ""}<br>Quelle: ${esc(x.sourceLabel)}</small></div>
       <button class="btn primary" data-install="${esc(x.id)}">${x.isNew ? "Installieren" : "Aktualisieren"}</button></div>`),
     ...(u.errors || []).map((e) => `<div class="note err">${esc(e.source)}: ${esc(e.error)}</div>`),
+    ...(u.held || []).map((h) => `<div class="note">${esc(h.name)} ${esc(h.version)} braucht CommandWave ${esc(h.minApp)} – bis dahin bleibt deine Version.</div>`),
     u.checkedAt && !ups.length && !u.busy ? `<div class="note">Alle Mods sind aktuell (geprüft ${new Date(u.checkedAt).toLocaleTimeString("de-DE")}).</div>` : "",
     !state.settings.sources.length ? `<div class="note">Noch keine Update-Quelle eingetragen – unter Einstellungen → Mod-Updates.</div>` : "",
   ].join("");
   $("#mods").innerHTML = state.mods.map((m) => `<div class="mod${m.enabled ? "" : " off"}">
       <div><b>${esc(m.name)}</b> <span class="ver">${esc(m.version)}</span>${m.script ? ' <span class="tag">Skript</span>' : ""}
         <small>${esc(m.description)}</small>
-        <small class="muted">${m.commands} Befehle${m.author ? " · von " + esc(m.author) : ""}${m.error ? ` · <span class="errtxt">${esc(m.error)}</span>` : ""}</small></div>
+        <small class="muted">${m.commands} Befehle${m.author ? " · von " + esc(m.author) : ""}${m.note ? " · " + esc(m.note) + " – ältere Version aktiv" : ""}${m.error ? ` · <span class="errtxt">${esc(m.error)}</span>` : ""}</small></div>
       <input type="checkbox" class="switch" data-toggle="${esc(m.id)}" ${m.enabled ? "checked" : ""} title="Mod an/aus">
     </div>`).join("");
   $("#modErrors").innerHTML = state.errors.filter((e) => !state.mods.some((m) => m.id === e.dir)).map((e) => `<div class="note err">Mod „${esc(e.dir)}“ nicht geladen: ${esc(e.error)}</div>`).join("");

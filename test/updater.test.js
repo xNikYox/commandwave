@@ -117,3 +117,49 @@ test("mehrere Quellen: höchste Version gewinnt; nur 3 Sicherungen je Mod", asyn
   }
   assert.equal(fs.readdirSync(path.join(mods, ".backup")).length, 3);
 });
+
+test("minApp: index.json trennt, zu neue Mods werden übersprungen, alte Version bleibt", async () => {
+  const src = tmp();
+  const mods = tmp();
+  mod(src, "alt", "1.0.0", { commands: [{ phrases: ["alte mod"], say: "alt" }] });
+  mod(src, "gruss", "2.0.0", { minApp: "2.5.0", commands: [{ phrases: ["guten morgen"], say: "neu" }] });
+  mod(src, "neu", "1.0.0", { minApp: "2.0.0", commands: [{ phrases: ["hallo welt"], say: "Hallo!" }] });
+  const idx = U.buildIndex(src);
+  // CommandWave vor 2.0 liest nur „mods“ – dort darf nichts mit minApp stehen
+  assert.deepEqual(idx.mods.map((m) => m.id), ["alt"]);
+  assert.deepEqual(idx.modsMinApp.map((m) => [m.id, m.minApp]), [["gruss", "2.5.0"], ["neu", "2.0.0"]]);
+  fs.writeFileSync(path.join(src, "index.json"), JSON.stringify(idx));
+  mod(mods, "gruss", "1.0.0", { commands: [{ phrases: ["guten morgen"], say: "alt" }] });
+  const sources = [{ type: "folder", path: src }];
+  const r = await U.check(sources, [{ id: "gruss", version: "1.0.0" }], undefined, { appVersion: "2.0.0" });
+  assert.deepEqual(r.updates.map((u) => u.id), ["alt", "neu"]);
+  assert.deepEqual(r.held, [{ id: "gruss", name: "gruss", version: "2.0.0", minApp: "2.5.0" }]);
+  // ältere App: auch „neu“ wird zurückgehalten
+  const old = await U.check(sources, [], undefined, { appVersion: "1.9.1" });
+  assert.deepEqual(old.updates.map((u) => u.id), ["alt"]);
+  assert.deepEqual(old.held.map((h) => h.id), ["gruss", "neu"]);
+  // install prüft selbst noch einmal
+  const forced = { ...r.updates.find((u) => u.id === "neu") };
+  await assert.rejects(U.install(forced, mods, undefined, { appVersion: "1.9.0" }), /braucht CommandWave 2\.0\.0/);
+  await U.install(forced, mods, undefined, { appVersion: "2.0.0" });
+  assert.ok(fs.existsSync(path.join(mods, "neu", "mod.json")));
+});
+
+test("minApp: Loader lädt zu neue Mod nicht, nimmt eine passende Sicherung", async () => {
+  const mods = tmp();
+  mod(mods, "gruss", "2.0.0", { minApp: "3.0.0", commands: [{ phrases: ["guten morgen"], say: "neu" }] });
+  mod(mods, "zukunft", "1.0.0", { minApp: "9.0.0", commands: [{ phrases: ["hallo welt"], say: "Hallo!" }] });
+  mod(path.join(mods, ".backup"), "gruss-1.0.0-1700000000000", "1.0.0", { id: "gruss", commands: [{ phrases: ["guten morgen"], say: "alt" }] });
+  const a = new Assistant({ modsDir: mods, actions: {}, dataDir: mods, appVersion: "2.0.0" });
+  a.reload();
+  assert.equal((await a.handle("guten morgen")).say, "alt");
+  const g = a.mods.find((m) => m.id === "gruss");
+  assert.equal(g.version, "1.0.0");
+  assert.match(g.note, /braucht CommandWave 3\.0\.0/);
+  assert.equal((await a.handle("hallo welt")).ok, false);
+  assert.match(a.errors.find((e) => e.dir === "zukunft").error, /braucht CommandWave 9\.0\.0/);
+  // ohne bekannte App-Version (Tests, Skripte) wird alles geladen
+  const b = new Assistant({ modsDir: mods, actions: {}, dataDir: mods });
+  b.reload();
+  assert.equal((await b.handle("guten morgen")).say, "neu");
+});

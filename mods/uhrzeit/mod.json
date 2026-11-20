@@ -2,6 +2,7 @@
   "id": "uhrzeit",
   "name": "Uhrzeit, Datum & Timer",
   "version": "1.2.0",
+  "minApp": "1.3.0",
   "author": "CommandWave",
   "description": "Beispiel für eine Skript-Mod mit eigener Logik (main.js): „Wie spät ist es?“, „Welcher Tag ist heute?“, „Stelle einen Timer auf fünf Minuten“.",
   "main": "main.js",

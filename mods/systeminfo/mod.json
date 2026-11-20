@@ -2,6 +2,7 @@
   "id": "systeminfo",
   "name": "Systeminfo",
   "version": "1.0.0",
+  "minApp": "1.6.0",
   "author": "CommandWave",
   "description": "„Wie viel Akku habe ich?“, „Wie voll ist der Arbeitsspeicher?“, „Wie viel Speicherplatz ist frei?“, „Wie ausgelastet ist die CPU?“, „Wie lange läuft der PC schon?“, „Systemstatus“. English: „How much battery do I have?“, „System status“.",
   "main": "main.js"
