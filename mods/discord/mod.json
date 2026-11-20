@@ -1,0 +1,13 @@
+{
+  "id": "discord",
+  "name": "Discord",
+  "version": "1.0.0",
+  "minApp": "2.0.0",
+  "author": "CommandWave",
+  "description": "„Mikro stumm“, „Stummschaltung aufheben“, „Taub schalten“, „Taub aufheben“ – drückt die Tastenkürzel, die du einmal in Discord unter Einstellungen → Tastenbelegung festlegst (Standard: Strg + Umschalt + M und Strg + Umschalt + D, änderbar unter Einstellungen). English: „Discord mute“, „Deafen me on Discord“.",
+  "main": "main.js",
+  "settings": [
+    { "key": "mute", "label": "Discord: Stummschalten (Taste)", "type": "hotkey", "default": "^+m" },
+    { "key": "deafen", "label": "Discord: Taub schalten (Taste)", "type": "hotkey", "default": "^+d" }
+  ]
+}

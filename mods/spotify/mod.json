@@ -1,0 +1,9 @@
+{
+  "id": "spotify",
+  "name": "Spotify",
+  "version": "1.0.0",
+  "minApp": "2.0.0",
+  "author": "CommandWave",
+  "description": "„Spiel Coldplay auf Spotify“, „Spiele Lieder von SDP auf Spotify“, „Spiel die Playlist Chillout auf Spotify“ – sucht in der Spotify-App und startet das erste Ergebnis. „Lied gefällt mir“ speichert das laufende Lied (Alt + Umschalt + B). Weiter, Pause, nächstes Lied und „Was läuft gerade?“ gehen über die Mod „Musik steuern“ (z. B. „Pause bei Spotify“). English: „Play Coldplay on Spotify“.",
+  "main": "main.js"
+}

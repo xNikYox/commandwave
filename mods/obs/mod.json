@@ -1,0 +1,13 @@
+{
+  "id": "obs",
+  "name": "OBS Studio",
+  "version": "1.0.0",
+  "minApp": "2.0.0",
+  "author": "CommandWave",
+  "description": "„Aufnahme starten“, „Aufnahme stoppen“, „Stream starten“, „Stream beenden“, „Szene Gaming“, „Aufnahme pausieren“, „Aufnahme fortsetzen“ – steuert OBS Studio über den eingebauten WebSocket-Server (OBS 28+, Werkzeuge → WebSocket-Servereinstellungen). Läuft nur auf diesem PC. English: „Start recording“, „Switch to scene Gaming“.",
+  "main": "main.js",
+  "settings": [
+    { "key": "url", "label": "OBS: Adresse", "type": "text", "default": "ws://127.0.0.1:4455" },
+    { "key": "password", "label": "OBS: Passwort", "type": "password", "default": "" }
+  ]
+}
