@@ -6,8 +6,7 @@ CommandWave ist ein Sprachassistent für Windows 11, der **komplett auf deinem P
 
 ## 1. Installieren und starten (ohne Programmierkenntnisse)
 
-1. **`CommandWave-1.0.0.exe`** herunterladen (Download-Seite) und doppelklicken.
-   Es ist eine „portable“ App: keine Installation, die Datei startet direkt. Am besten in einen festen Ordner legen, z. B. `C:\Programme\CommandWave\`.
+1. **`CommandWave-Setup.exe`** herunterladen (Download-Seite) und doppelklicken – CommandWave installiert sich und startet. Updates kommen danach automatisch.
 2. Windows SmartScreen warnt beim ersten Start („Unbekannter Herausgeber“), weil die App kein gekauftes Zertifikat hat:
    **„Weitere Informationen“ → „Trotzdem ausführen“**.
 3. Beim ersten Zuhören fragt Windows nach dem Mikrofon. Falls nichts passiert:
@@ -30,6 +29,49 @@ CommandWave ist ein Sprachassistent für Windows 11, der **komplett auf deinem P
 
 ---
 
+## Neu in 2.0
+
+### Routinen
+
+Mehrere Schritte auf einmal: Im Fenster unter **Routinen → Neue Routine** einen Namen, Auslöser und Schritte festlegen.
+
+- **Auslöser** (beliebig kombinierbar): ein **Satz** („Arbeitsmodus“, „Gaming Modus“), eine **Uhrzeit** an bestimmten Wochentagen (z. B. Mo–Fr 08:00 – der PC muss an sein) und/oder **beim Start** (einmal, wenn CommandWave startet; mit *Einstellungen → Mit Windows starten* also nach dem Anmelden).
+- **Schritte**: jeder Befehl, den CommandWave kennt (so eintippen, wie man ihn sagt, z. B. „öffne die app editor“ – alle Mods gehen), App starten, Webseite öffnen, Lautstärke setzen, warten, etwas sagen.
+- Die Schritte laufen nacheinander. Klappt einer nicht, geht es trotzdem weiter – am Ende sagt CommandWave, was nicht geklappt hat.
+- Per Sprache: den eigenen Satz sagen, „**Starte Routine Arbeitsmodus**“ oder „**Welche Routinen gibt es?**“.
+- Kennt die Spracherkennung ein Wort des Satzes nicht, warnt das Fenster – dann das Wort so schreiben, wie es klingt (wie bei „disk kord“).
+
+### Natürliche Stimme (Piper)
+
+*Einstellungen → Sprache & Stimme → Sprachausgabe*: **Piper – Frau (Kerstin)** oder **Piper – Mann (Thorsten)**. Beim ersten Auswählen fragt CommandWave, ob es einmalig ca. 85 MB laden darf (Piper von GitHub, die Stimme von Hugging Face; jede Datei wird per Prüfsumme geprüft). Danach spricht die Stimme **komplett offline**. Klappt etwas nicht, spricht automatisch wieder die Windows-Stimme. Englische Antworten kommen weiter von der Windows-Stimme.
+
+### Dateien öffnen (Mod „dateien“)
+
+„**Öffne die Datei Bewerbung**“, „Suche die Datei Rechnung Telekom“ – CommandWave sucht in Dokumente, Desktop, Downloads, Bilder und Musik (auch wenn OneDrive diese Ordner verschoben hat), zuerst über den Windows-Suchindex, sonst direkt in den Ordnern.
+Ist ein Treffer eindeutig, geht die Datei gleich auf („Bewerbung wird geöffnet“). Passen mehrere, zeigt CommandWave die fünf besten – „**Nummer zwei**“ sagen oder anklicken.
+Die Endung muss man nicht sagen; Umlaute und kleine Hörfehler („Mueller“ statt „Müller“) sind egal. Mit „… Punkt PDF“ bevorzugt CommandWave die PDF.
+Ordner öffnen: „Zeig mir meine Downloads“, „Öffne Dokumente“.
+
+### Notizen (Mod „notizen“)
+
+„**Merke dir** Milch kaufen“, „Notiere Zahnarzt am Dienstag“, „**Was habe ich mir gemerkt?**“ (liest die letzten fünf vor und zeigt alle), „Lösche Notiz Nummer zwei“, „Lösche alle Notizen“ (mit Rückfrage). Alle Notizen stehen auch im Fenster unter **Notizen** – dort kann man sie auch eintippen und löschen.
+
+### Discord (Mod „discord“)
+
+Einmal in Discord die Tasten festlegen: *Benutzereinstellungen (Zahnrad) → Tastenbelegung → „Tastenbelegung hinzufügen“*. Bei der Aktion **„Stummschalten umschalten“** die Taste **Strg + Umschalt + M** drücken, bei **„Ein- und Ausgabe stummschalten umschalten“** (Taubschalten) **Strg + Umschalt + D**. Dann: „**Mikro stumm**“, „**Stummschaltung aufheben**“, „**Taub schalten**“, „**Taub aufheben**“.
+Discord kennt dafür nur Umschalter – jeder Befehl schaltet um. Passt es mal nicht, den Befehl einfach noch einmal sagen. Andere Tasten stellst du in CommandWave unter *Einstellungen → Einstellungen für Mods → Discord* ein (Feld anklicken, Tasten drücken).
+
+### OBS Studio (Mod „obs“)
+
+OBS ab Version 28 hat die Fernsteuerung eingebaut: *Werkzeuge → WebSocket-Servereinstellungen → „WebSocket-Server aktivieren“* (Port 4455). Unter „Verbindungsinformationen anzeigen“ steht das Passwort – in CommandWave unter *Einstellungen → Einstellungen für Mods → OBS: Passwort* eintragen (es wird nur auf diesem PC gespeichert).
+Dann: „**Aufnahme starten**“ / „Aufnahme stoppen“, „Aufnahme pausieren“ / „Aufnahme fortsetzen“, „**Stream starten**“ / „Stream beenden“, „**Szene Gaming**“ (der Name darf ungefähr stimmen). „Pause“ allein bleibt bei der Musik. CommandWave verbindet sich nur mit OBS auf diesem PC.
+
+### Spotify (Mod „spotify“)
+
+„**Spiel Coldplay auf Spotify**“, „Spiele Lieder von SDP auf Spotify“, „Spiel die Playlist Chillout auf Spotify“ – CommandWave öffnet die Suche in der Spotify-App und drückt auf das erste Ergebnis. Klappt das Abspielen nicht, ist die Suche schon offen – dann einfach selbst klicken. „**Lied gefällt mir**“ speichert das laufende Lied in deinen Lieblingssongs. Pause, Weiter, „Nächstes Lied“ und „Was läuft gerade?“ gehen wie gewohnt, z. B. „Pause bei Spotify“.
+
+---
+
 ## 2. Wie es funktioniert (Architektur)
 
 | Teil | Technik | Warum |
@@ -37,7 +79,7 @@ CommandWave ist ein Sprachassistent für Windows 11, der **komplett auf deinem P
 | App, Fenster, Tray, Tastenkombination | **Electron** (JavaScript/Node.js) | eine eigenständige Windows-App, stabil, einfach erweiterbar |
 | Spracherkennung | **Vosk** mit deutschem Modell (`vosk-model-small-de-0.15`, 45 MB, Apache 2.0), läuft als WebAssembly im Fenster | 100 % offline; CommandWave gibt Vosk nur die Sätze aus den Mods vor („Grammatik“) – das macht die Erkennung von Befehlen sehr zuverlässig |
 | Verstehen | eigener Satz-Abgleich (`src/core/phrases.js`) | ordnet das Gehörte dem passenden Befehl zu und verzeiht Füllwörter („bitte“, „den“) und kleine Hörfehler |
-| Sprachausgabe | die **Windows-Stimmen** (z. B. Microsoft Hedda/Katja) | offline, schon auf dem PC |
+| Sprachausgabe | die **Windows-Stimmen** (z. B. Microsoft Hedda/Katja) oder **Piper** (natürliche Stimme, einmal geladen) | offline; Piper läuft als Hintergrundprozess und schreibt je Satz eine WAV, die das Fenster abspielt |
 | Mods | Ordner `mods\` mit `mod.json` (+ optional `main.js`) | neue Befehle ohne den Hauptcode zu ändern |
 | Mod-Updater | Quellen: Ordner/Netzlaufwerk, öffentliches GitHub-Repo, Adresse mit `index.json` | prüft Versionen, lädt neue Dateien, prüft jede per **SHA-256**, tauscht atomar, sichert die alte Version |
 
@@ -100,6 +142,7 @@ In `say` und `action` kann man einsetzen: `{app}` (Anzeigename), `{app.value}` (
 | `run` | Programm starten | `{ "type": "run", "target": "notepad.exe", "args": ["C:\\notiz.txt"] }` |
 | `open` | Webseite, Ordner, Datei, Windows-Einstellung | `{ "type": "open", "target": "ms-settings:bluetooth" }` |
 | `media` | Lautstärke/Musik: `volume_up`, `volume_down`, `mute`, `play_pause`, `next`, `previous`, `stop` | `{ "type": "media", "key": "volume_up", "times": 5 }` |
+| `volume` | Gesamtlautstärke setzen (0…1, ab 2.0) | `{ "type": "volume", "value": 0.3 }` |
 | `keys` | Tasten drücken (SendKeys-Schreibweise) | `{ "type": "keys", "keys": "^c" }` |
 | `shell` | PowerShell-Befehl (mächtig – nur für eigene Mods!) | `{ "type": "shell", "command": "Stop-Computer" }` |
 | `sequence` | mehrere Schritte, mit `{ "type": "wait", "ms": 1000 }` dazwischen | |
@@ -117,13 +160,19 @@ module.exports = (api) => {
 ```
 
 Die Schnittstelle `api`: `command(sätze, handler)`, `slot(name, werte)`, `say(text)`, `notify(titel, text)`, `run(programm, args)`, `open(adresse)`, `media(taste)`, `storage.get()/set()`, `log(...)`.
-Der Handler bekommt `ctx` mit `ctx.slots` (z. B. `ctx.slots.zahl.value`) und darf `async` sein. Ein vollständiges Beispiel ist die mitgelieferte Mod **uhrzeit** (Uhrzeit, Datum, Timer).
+Ab 2.0 zusätzlich: `keys("^+m")` (Tasten drücken), `settings()` (Einstellungen der Mod, siehe unten), `showList(titel, einträge)` (Liste im Fenster/Overlay), `powershell(skript)` (Ausgabe als JSON), `playInApp("Spotify*", adresse)`, `volume(0.3)`, `routines`.
+Der Handler bekommt `ctx` mit `ctx.slots` (z. B. `ctx.slots.zahl.value`) und darf `async` sein. `ctx.ask(frage)` fragt nach (freie Antwort), `ctx.choose(frage, einträge)` zeigt eine Liste und wartet auf „Nummer zwei“ oder einen Klick (ab 2.0). Ein vollständiges Beispiel ist die mitgelieferte Mod **uhrzeit** (Uhrzeit, Datum, Timer).
+
+**Einstellungen für eine Mod (ab 2.0):** In der `mod.json` z. B. `"settings": [{ "key": "taste", "label": "Taste", "type": "hotkey", "default": "^+m" }]` (Typen: `text`, `password`, `hotkey`). Die Felder erscheinen im Fenster unter *Einstellungen → Einstellungen für Mods*, die Mod liest sie mit `api.settings().taste`. Braucht eine Mod Funktionen aus 2.0, gehört `"minApp": "2.0.0"` in die `mod.json`.
+
+**Freier Text im Satz:** `{frei}` nimmt beliebige Wörter auf (Namen, Suchbegriffe – sie werden danach frei bzw. mit Whisper erkannt): `"merke dir {frei}"`, ab 2.0 auch mitten im Satz: `"spiel {frei} auf spotify"`.
 
 > ⚠ Skript-Mods laufen mit deinen Rechten – nur Mods aus Quellen installieren, denen du vertraust.
 
 ### Tipp: Wort wird nie erkannt?
 
 Das deutsche Sprachmodell kennt nicht jedes Wort (z. B. „Discord“). Dann schreibt man es so, wie es klingt: `"disk kord": { "target": "discord:", "label": "Discord" }`.
+Prüfen, ob ein Wort bekannt ist: `node scripts\vocab.js de discord "disk kord"` (✓ = bekannt). `npm test` prüft das für alle Sätze der mitgelieferten Mods.
 
 ---
 
@@ -178,9 +227,13 @@ src/core/phrases.js    Sätze/Platzhalter verstehen, Grammatik für die Erkennun
 src/core/mods.js       Mods laden und prüfen, Schnittstelle für Skript-Mods
 src/core/actions.js    Aktionen: run, open, media, keys, shell, sequence
 src/core/assistant.js  verbindet alles: Text → Befehl → Aktion → Antwort
-src/core/updater.js    Mod-Updater (Ordner, GitHub, Adresse) mit SHA-256-Prüfung
-src/renderer/          Fenster: Oberfläche, Vosk-Erkennung, Windows-Stimmen
+src/core/updater.js    Mod-Updater (Ordner, GitHub, Adresse) mit SHA-256-Prüfung, minApp
+src/core/routines.js   Routinen: Zeitplan (Uhrzeit, Wochentage), Schritte nacheinander
+src/core/tts.js        Piper-Stimme: laden, prüfen, sprechen (piper.exe im Hintergrund)
+src/core/vocab.js      Wortschatz des Sprachmodells (welche Wörter die Erkennung kennt)
+src/renderer/          Fenster: Oberfläche, Vosk-Erkennung, Windows-Stimmen / Piper abspielen
 mods/                  mitgelieferte Mods (werden beim ersten Start kopiert)
 scripts/build-index.js index.json für eine Mod-Quelle erzeugen
 scripts/get-model.js   Sprachmodell herunterladen
+scripts/vocab.js       prüfen, ob das Sprachmodell Wörter kennt
 ```

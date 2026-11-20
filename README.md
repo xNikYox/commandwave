@@ -5,10 +5,13 @@ Lokaler Sprachassistent für Windows 11 – Spracherkennung (Vosk) und Sprachaus
 - „Öffne die App Editor“ → *„Editor wird gestartet“* → `notepad.exe`
 - Unbekannt → *„Diesen Befehl kenne ich leider nicht.“*
 - Mods: Ordner mit `mod.json` (Sätze + Aktion) oder `main.js` (eigene Logik)
-- Updater: Ordner/Netzlaufwerk, öffentliches GitHub-Repo oder Adresse mit `index.json`, SHA-256-Prüfung, Sicherung der alten Version
+- Updater: Ordner/Netzlaufwerk, öffentliches GitHub-Repo oder Adresse mit `index.json`, SHA-256-Prüfung, Sicherung der alten Version, `minApp` für Mods, die eine neuere CommandWave brauchen
+
+**Neu in 2.0:** Routinen („Arbeitsmodus“, Mo–Fr 8:00, beim Start) · natürliche Stimme mit Piper (einmal laden, dann offline) · Dateien finden und öffnen · Notizen · Discord, OBS und Spotify per Sprache
 
 Ausführliche Anleitung (Einrichten, eigene Mods, Mod-Repo, Bauen): **[ANLEITUNG.md](ANLEITUNG.md)**
 
 `npm install` · `npm run model` · `npm start` · `npm test` · `npm run dist:win`
 
 Spracherkennung: [Vosk](https://alphacephei.com/vosk/) / [vosk-browser](https://github.com/ccoreilly/vosk-browser) (Apache 2.0), Modell `vosk-model-small-de-0.15` (Apache 2.0).
+Natürliche Stimme (optional, wird erst beim Auswählen geladen): [Piper](https://github.com/rhasspy/piper) (MIT), Stimmen aus [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) (Lizenz je Stimme, siehe deren MODEL_CARD).
