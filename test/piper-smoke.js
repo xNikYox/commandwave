@@ -16,6 +16,7 @@ const tts = require("../src/core/tts");
   console.log(`Geladen und geprüft in ${Math.round((Date.now() - t0) / 1000)} s:`, tts.paths(dir, id).exe);
   assert.ok(tts.isInstalled(dir, id), "nicht vollständig eingerichtet");
   const p = tts.paths(dir, id);
+  diagnose(p, dir);
   const engine = new tts.PiperEngine({ exe: p.exe, model: p.model });
   for (const [i, text] of ["Hallo, ich bin CommandWave. Editor wird gestartet.", "Diesen Befehl kenne ich leider nicht."].entries()) {
     const out = path.join(dir, `satz${i}.wav`);
@@ -33,3 +34,23 @@ const tts = require("../src/core/tts");
   console.error(e);
   process.exit(1);
 });
+
+// Diagnose: verschiedene Aufrufarten einzeln probieren und Ergebnis zeigen (Absturz-Code, stderr), damit ein Fehler
+// im Praxistest sofort zeigt, woran es liegt.
+function diagnose(p, dir) {
+  const { spawnSync } = require("node:child_process");
+  const exeDir = path.dirname(p.exe);
+  console.log("Dateien neben piper.exe:", fs.readdirSync(exeDir).join(", "));
+  const text = "Hallo, das ist ein Test.";
+  const tries = [
+    ["ohne espeak-Angabe, cwd=piper", exeDir, ["--model", p.model, "--output_file", path.join(dir, "d1.wav")]],
+    ["espeak absolut, cwd=piper", exeDir, ["--model", p.model, "--espeak_data", path.join(exeDir, "espeak-ng-data"), "--output_file", path.join(dir, "d2.wav")]],
+    ["json-input, cwd=piper", exeDir, ["--model", p.model, "--json-input", "--quiet"], JSON.stringify({ text, output_file: path.join(dir, "d3.wav") })],
+    ["wie die App (cwd=Stimme, relativ)", path.dirname(p.model), ["--model", path.basename(p.model), "--espeak_data", path.relative(path.dirname(p.model), path.join(exeDir, "espeak-ng-data")), "--json-input", "--quiet"], JSON.stringify({ text, output_file: path.relative(path.dirname(p.model), path.join(dir, "d4.wav")) })],
+  ];
+  for (const [name, cwd, args, input] of tries) {
+    const r = spawnSync(p.exe, args, { cwd, input: (input ?? text) + "\n", encoding: "utf8", timeout: 60000, windowsHide: true });
+    const out = fs.readdirSync(dir).filter((f) => /^d\d\.wav$/.test(f)).map((f) => `${f}=${fs.statSync(path.join(dir, f)).size}`).join(" ");
+    console.log(`  [${name}] Code ${r.status} (0x${((r.status ?? 0) >>> 0).toString(16)}) ${r.error ? r.error.message : ""} | ${out} | stderr: ${(r.stderr || "").trim().split(/\r?\n/).slice(-3).join(" / ")}`);
+  }
+}
