@@ -17,15 +17,17 @@ const PIPER = {
   size: 22477236,
   sha256: "f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea",
 };
-// feste Version der Stimmen (Hugging Face, rhasspy/piper-voices) – damit die Prüfsummen stimmen
+// feste Version der Stimmen (Hugging Face, rhasspy/piper-voices) – damit die Prüfsummen stimmen. Thorsten aus v1.0.0:
+// neuere Fassungen sind mit Piper 1.5 erzeugt (Laute aus mehreren Zeichen wie „aɪ“), daran stürzt piper.exe 2023.11 ab
 const HF = "https://huggingface.co/rhasspy/piper-voices/resolve/42301ec547bc2939386cf0ae9f9050ca05b1d3af/de/de_DE/";
+const HF_V1 = "https://huggingface.co/rhasspy/piper-voices/resolve/375a0fe641dea077c2a47b4e9a056d6da521eed3/de/de_DE/";
 const VOICES = {
   "piper-kerstin": { label: "Piper – Frau (Kerstin)", name: "de_DE-kerstin-low", dir: "kerstin/low/",
     onnx: { size: 63104526, sha256: "d352a7641892cebf2903859af94e9ba81a141110215fe3943bcda7f7da401b7a" },
     json: { size: 4158, sha256: "56e708556b7b9b7a53c4f8957e021421e69f11a600962bba554cffbe72cf2d47" } },
-  "piper-thorsten": { label: "Piper – Mann (Thorsten)", name: "de_DE-thorsten-medium", dir: "thorsten/medium/",
-    onnx: { size: 63221984, sha256: "fd270eb3d1ebf91d763f8a0f949b1b1bebdfefaea18c3aaf8577dd34536e064f" },
-    json: { size: 6455, sha256: "e5bb7410dcbbcc0be6f4544f6bc66612b315ab5cb3099ec44bb46d860bc7cca9" } },
+  "piper-thorsten": { label: "Piper – Mann (Thorsten)", name: "de_DE-thorsten-medium", dir: "thorsten/medium/", base: HF_V1,
+    onnx: { size: 63201294, sha256: "7e64762d8e5118bb578f2eea6207e1a35a8e0c30595010b666f983fc87bb7819" },
+    json: { size: 4819, sha256: "974adee790533adb273a1ac88f49027d2a1b8f0f2cf4905954a4791e79264e85" } },
 };
 const isPiper = (id) => Object.prototype.hasOwnProperty.call(VOICES, id);
 
@@ -57,8 +59,8 @@ function missing(dir, id, platform = process.platform) {
   const p = paths(dir, id, platform);
   const out = [];
   if (!fs.existsSync(p.exe)) out.push({ url: PIPER.url, file: p.zip, size: PIPER.size, sha256: PIPER.sha256, label: "Piper", unzip: true });
-  if (!ok(p.model, v.onnx.size)) out.push({ url: HF + v.dir + v.name + ".onnx", file: p.model, ...v.onnx, label: v.label });
-  if (!ok(p.config, v.json.size)) out.push({ url: HF + v.dir + v.name + ".onnx.json", file: p.config, ...v.json, label: v.label });
+  if (!ok(p.model, v.onnx.size)) out.push({ url: (v.base || HF) + v.dir + v.name + ".onnx", file: p.model, ...v.onnx, label: v.label });
+  if (!ok(p.config, v.json.size)) out.push({ url: (v.base || HF) + v.dir + v.name + ".onnx.json", file: p.config, ...v.json, label: v.label });
   return out;
 }
 
